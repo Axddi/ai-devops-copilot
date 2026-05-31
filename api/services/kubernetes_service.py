@@ -18,6 +18,26 @@ def get_all_pods():
     ]
 
 
+def get_pod_metrics(namespace: str = "ai-devops"):
+    pods = get_all_pods()
+
+    def is_failed(pod):
+        return pod["status"] not in ["Running", "Succeeded"]
+
+    namespace_pods = [
+        pod for pod in pods
+        if pod["namespace"] == namespace
+    ]
+
+    return {
+        "namespace": namespace,
+        "total_pods": len(pods),
+        "namespace_pods": len(namespace_pods),
+        "failed_pods": len([pod for pod in namespace_pods if is_failed(pod)]),
+        "system_pods": len([pod for pod in pods if pod["namespace"] == "kube-system"])
+    }
+
+
 def get_pod_logs(pod_name: str, namespace: str = "default"):
     return v1.read_namespaced_pod_log(
         name=pod_name,

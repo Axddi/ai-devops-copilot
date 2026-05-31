@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Activity, AlertCircle, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { getAnalyzedIncidents, getEvents, getPods, type AnalyzedIncident, type ClusterEvent, type Pod } from '@/lib/api';
+import { getEvents, getIncidentSummary, getPodMetrics, type ClusterEvent, type Incident, type PodMetrics } from '@/lib/api';
 
 interface Metric {
   title: string;
@@ -40,9 +40,9 @@ function getStatusBar(status: Metric['status']) {
 }
 
 export function PlatformOverview() {
-  const [pods, setPods] = useState<Pod[]>([]);
+  const [podMetrics, setPodMetrics] = useState<PodMetrics | null>(null);
   const [events, setEvents] = useState<ClusterEvent[]>([]);
-  const [incidents, setIncidents] = useState<AnalyzedIncident[]>([]);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,14 +51,14 @@ export function PlatformOverview() {
 
     async function loadOverview() {
       try {
-        const [podsData, eventsData, incidentsData] = await Promise.all([
-          getPods(),
+        const [metricsData, eventsData, incidentsData] = await Promise.all([
+          getPodMetrics(),
           getEvents(),
-          getAnalyzedIncidents(),
+          getIncidentSummary(),
         ]);
 
         if (!cancelled) {
-          setPods(podsData);
+          setPodMetrics(metricsData);
           setEvents(eventsData);
           setIncidents(incidentsData);
           setError(null);
@@ -84,11 +84,13 @@ export function PlatformOverview() {
     };
   }, []);
 
-  const totalPods = pods.length;
-  const runningPods = pods.filter((pod) => pod.status.toLowerCase() === 'running').length;
-  const failedPods = pods.filter((pod) => !['running', 'succeeded'].includes(pod.status.toLowerCase())).length;
+  const totalPods = podMetrics?.total_pods ?? 0;
+  const namespacePods = podMetrics?.namespace_pods ?? 0;
+  const failedPods = podMetrics?.failed_pods ?? 0;
+  const systemPods = podMetrics?.system_pods ?? 0;
+  const runningPods = Math.max(0, namespacePods - failedPods);
   const warningEvents = events.filter((event) => event.type.toLowerCase() === 'warning').length;
-  const clusterHealth = totalPods === 0 ? 100 : Math.round((runningPods / totalPods) * 100);
+  const clusterHealth = namespacePods === 0 ? 100 : Math.round((runningPods / namespacePods) * 100);
 
   const metrics: Metric[] = [
     {
@@ -108,16 +110,16 @@ export function PlatformOverview() {
     {
       title: 'Running Pods',
       value: runningPods.toLocaleString(),
-      unit: `${totalPods.toLocaleString()} total pods`,
+      unit: `${namespacePods.toLocaleString()} namespace pods`,
       status: failedPods === 0 ? 'healthy' : 'warning',
-      progress: totalPods === 0 ? 0 : Math.round((runningPods / totalPods) * 100),
+      progress: namespacePods === 0 ? 0 : Math.round((runningPods / namespacePods) * 100),
     },
     {
       title: 'Failed Pods',
       value: failedPods.toLocaleString(),
-      unit: 'non-running pods',
+      unit: 'non-running namespace pods',
       status: failedPods === 0 ? 'healthy' : failedPods < 5 ? 'warning' : 'critical',
-      progress: totalPods === 0 ? 0 : Math.min(100, Math.round((failedPods / totalPods) * 100)),
+      progress: namespacePods === 0 ? 0 : Math.min(100, Math.round((failedPods / namespacePods) * 100)),
     },
     {
       title: 'Warning Events',
@@ -127,9 +129,9 @@ export function PlatformOverview() {
       progress: Math.min(100, warningEvents * 20),
     },
     {
-      title: 'Namespaces',
-      value: new Set(pods.map((pod) => pod.namespace)).size.toString(),
-      unit: 'with discovered pods',
+      title: 'System Pods',
+      value: systemPods.toLocaleString(),
+      unit: `${totalPods.toLocaleString()} total cluster pods`,
       status: 'info',
       progress: 100,
     },

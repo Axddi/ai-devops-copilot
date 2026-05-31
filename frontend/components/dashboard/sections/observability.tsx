@@ -6,7 +6,7 @@ import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, T
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getAnalyzedIncidents, getEvents, getPods, type AnalyzedIncident, type ClusterEvent, type Pod } from '@/lib/api';
+import { getEvents, getIncidentSummary, getPods, type ClusterEvent, type Incident, type Pod } from '@/lib/api';
 
 interface ObservabilityProps {
   defaultTab?: 'metrics' | 'logs' | 'events';
@@ -28,7 +28,7 @@ function getLevelColor(level: string) {
 export function Observability({ defaultTab = 'metrics' }: ObservabilityProps) {
   const [pods, setPods] = useState<Pod[]>([]);
   const [events, setEvents] = useState<ClusterEvent[]>([]);
-  const [incidents, setIncidents] = useState<AnalyzedIncident[]>([]);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,7 +40,7 @@ export function Observability({ defaultTab = 'metrics' }: ObservabilityProps) {
         const [podsData, eventsData, incidentsData] = await Promise.all([
           getPods(),
           getEvents(),
-          getAnalyzedIncidents(),
+          getIncidentSummary(),
         ]);
 
         if (!cancelled) {
@@ -85,12 +85,12 @@ export function Observability({ defaultTab = 'metrics' }: ObservabilityProps) {
   }, [events, pods]);
 
   const logRows = incidents
-    .filter((item) => item.incident.logs)
+    .filter((item) => item.logs)
     .map((item) => ({
       timestamp: 'live',
-      level: item.incident.severity.toLowerCase() === 'high' ? 'WARN' : 'INFO',
-      service: item.incident.pod,
-      message: item.incident.logs,
+      level: item.severity.toLowerCase() === 'high' ? 'WARN' : 'INFO',
+      service: item.pod,
+      message: item.logs,
     }));
 
   return (

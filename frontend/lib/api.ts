@@ -6,18 +6,27 @@ let analyzedIncidentsRequest: Promise<AnalyzedIncident[]> | null = null;
 
 export interface Incident {
   pod: string;
+  namespace: string;
   severity: string;
   reasons: string[];
   messages: string[];
   logs: string;
 }
 
+export interface AIError {
+  code: string;
+  message: string;
+}
+
 export interface AIAnalysis {
+  status: 'success' | 'fallback';
+  provider: string;
   root_cause: string;
   severity: string;
   explanation: string;
   recommended_fix: string[];
   kubectl_commands: string[];
+  error: AIError | null;
 }
 
 export interface AnalyzedIncident {
@@ -41,6 +50,14 @@ export interface ClusterEvent {
 
 export interface BackendStatus {
   message: string;
+}
+
+export interface PodMetrics {
+  namespace: string;
+  total_pods: number;
+  namespace_pods: number;
+  failed_pods: number;
+  system_pods: number;
 }
 
 async function request<T>(path: string): Promise<T> {
@@ -68,11 +85,39 @@ function stringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
+function sanitizedProviderMessage(value: unknown, fallback: string) {
+  const message = stringValue(value, fallback);
+  const lower = message.toLowerCase();
+  const looksRaw =
+    lower.includes('resource_exhausted') ||
+    lower.includes('generativelanguage.googleapis.com') ||
+    lower.includes('quota exceeded') ||
+    lower.includes('google.rpc') ||
+    lower.includes('api key');
+
+  return looksRaw ? fallback : message;
+}
+
+function normalizeAIError(value: unknown): AIError | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    code: stringValue(value.code, 'AI_ANALYSIS_UNAVAILABLE'),
+    message: sanitizedProviderMessage(
+      value.message,
+      'AI analysis is unavailable. Showing Kubernetes-derived fallback analysis.'
+    ),
+  };
+}
+
 function normalizeIncident(value: unknown): Incident {
   const incident = isRecord(value) ? value : {};
 
   return {
     pod: stringValue(incident.pod, 'unknown-pod'),
+    namespace: stringValue(incident.namespace, 'ai-devops'),
     severity: stringValue(incident.severity, 'unknown'),
     reasons: stringArray(incident.reasons),
     messages: stringArray(incident.messages),
@@ -82,13 +127,21 @@ function normalizeIncident(value: unknown): Incident {
 
 function normalizeAnalysis(value: unknown): AIAnalysis {
   const analysis = isRecord(value) ? value : {};
+  const error = normalizeAIError(analysis.error);
+  const status = analysis.status === 'success' ? 'success' : analysis.status === 'fallback' || error ? 'fallback' : 'success';
 
   return {
+    status,
+    provider: stringValue(analysis.provider, 'unknown'),
     root_cause: stringValue(analysis.root_cause, 'No root cause available'),
     severity: stringValue(analysis.severity, 'unknown'),
-    explanation: stringValue(analysis.explanation, 'No AI explanation returned yet.'),
+    explanation: sanitizedProviderMessage(
+      analysis.explanation,
+      'AI analysis is unavailable. Showing Kubernetes-derived fallback analysis.'
+    ),
     recommended_fix: stringArray(analysis.recommended_fix),
     kubectl_commands: stringArray(analysis.kubectl_commands),
+    error,
   };
 }
 
@@ -96,11 +149,12 @@ function normalizeAnalyzedIncident(value: unknown): AnalyzedIncident {
   const outer = isRecord(value) ? value : {};
   const aiPayload = isRecord(outer.ai_analysis) ? outer.ai_analysis : {};
   const nestedPayload = isRecord(aiPayload.ai_analysis) || isRecord(aiPayload.incident) ? aiPayload : outer;
+  const aiAnalysis = normalizeAnalysis(nestedPayload.ai_analysis ?? outer.ai_analysis);
 
   return {
     incident: normalizeIncident(outer.incident ?? nestedPayload.incident),
-    ai_analysis: normalizeAnalysis(nestedPayload.ai_analysis ?? outer.ai_analysis),
-    provider: stringValue(outer.provider ?? nestedPayload.provider, 'unknown'),
+    ai_analysis: aiAnalysis,
+    provider: stringValue(outer.provider ?? nestedPayload.provider ?? aiAnalysis.provider, 'unknown'),
   };
 }
 
@@ -143,6 +197,11 @@ export async function getIncidents() {
 
 export async function getPods() {
   return request<Pod[]>('/pods');
+}
+
+export async function getPodMetrics(namespace = 'ai-devops') {
+  const params = new URLSearchParams({ namespace });
+  return request<PodMetrics>(`/metrics?${params.toString()}`);
 }
 
 export async function getEvents(namespace = 'ai-devops') {

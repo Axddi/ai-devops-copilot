@@ -176,6 +176,16 @@ export function IncidentsTable() {
                       <TableRow className="border-border bg-secondary/20">
                         <TableCell colSpan={6}>
                           <div className="space-y-5 py-4">
+                            {item.ai_analysis.status !== 'success' && (
+                              <div className="flex items-start gap-3 rounded-md border border-yellow-500/20 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-300">
+                                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                <span>
+                                  {item.ai_analysis.error?.message ||
+                                    'AI analysis is unavailable. Showing Kubernetes-derived fallback analysis.'}
+                                </span>
+                              </div>
+                            )}
+
                             <div>
                               <h4 className="font-semibold mb-2">Incident Events</h4>
                               <div className="space-y-2">

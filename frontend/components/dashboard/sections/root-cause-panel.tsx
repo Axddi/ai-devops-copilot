@@ -111,6 +111,16 @@ export function RootCausePanel() {
           <p className="text-sm text-muted-foreground">No active incidents returned for root cause analysis.</p>
         ) : (
           <>
+            {incident.ai_analysis.status !== 'success' && (
+              <div className="flex items-start gap-3 rounded-md border border-yellow-500/20 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-300">
+                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span>
+                  {incident.ai_analysis.error?.message ||
+                    'AI analysis is unavailable. Showing Kubernetes-derived fallback analysis.'}
+                </span>
+              </div>
+            )}
+
             <div className="space-y-3">
               <h3 className="font-semibold text-sm">Incident Summary</h3>
               <div className="bg-secondary/50 rounded-lg p-4 border border-border space-y-2">
