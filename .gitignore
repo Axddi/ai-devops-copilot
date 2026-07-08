@@ -18,6 +18,8 @@ temp/
 **/.terraform/
 *.tfstate
 *.tfstate.*
+*.tfvars
+*.tfvars.json
 crash.log
 override.tf
 override.tf.json
