@@ -1,16 +1,13 @@
+import os
+
 from kubernetes import client, config
+from kubernetes.client.exceptions import ApiException
 from kubernetes.config.config_exception import ConfigException
+
+KUBERNETES_REQUEST_TIMEOUT_SECONDS = float(os.getenv("KUBERNETES_REQUEST_TIMEOUT_SECONDS", "3"))
 
 
 def get_k8s_client():
-    """
-    Returns a Kubernetes CoreV1Api client.
-
-    Priority:
-    1. In-cluster config (when running inside EKS)
-    2. Local kubeconfig (when running locally or Docker with mounted kubeconfig)
-    """
-
     try:
         config.load_incluster_config()
         print("Loaded in-cluster Kubernetes configuration")
@@ -28,9 +25,12 @@ def get_k8s_client():
 
 
 def get_all_pods():
-    v1 = get_k8s_client()
+    try:
+        v1 = get_k8s_client()
 
-    pods = v1.list_pod_for_all_namespaces()
+        pods = v1.list_pod_for_all_namespaces(_request_timeout=KUBERNETES_REQUEST_TIMEOUT_SECONDS)
+    except (RuntimeError, ApiException):
+        return []
 
     return [
         {
@@ -70,18 +70,25 @@ def get_pod_metrics(namespace: str = "ai-devops"):
 
 
 def get_pod_logs(pod_name: str, namespace: str = "default"):
-    v1 = get_k8s_client()
+    try:
+        v1 = get_k8s_client()
 
-    return v1.read_namespaced_pod_log(
-        name=pod_name,
-        namespace=namespace,
-    )
+        return v1.read_namespaced_pod_log(
+            name=pod_name,
+            namespace=namespace,
+            _request_timeout=KUBERNETES_REQUEST_TIMEOUT_SECONDS,
+        )
+    except (RuntimeError, ApiException):
+        return "Unable to fetch logs"
 
 
 def get_namespace_events(namespace: str = "default"):
-    v1 = get_k8s_client()
+    try:
+        v1 = get_k8s_client()
 
-    events = v1.list_namespaced_event(namespace)
+        events = v1.list_namespaced_event(namespace, _request_timeout=KUBERNETES_REQUEST_TIMEOUT_SECONDS)
+    except (RuntimeError, ApiException):
+        return []
 
     return [
         {

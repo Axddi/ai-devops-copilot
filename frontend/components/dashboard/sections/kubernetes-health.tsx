@@ -4,11 +4,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Database, Loader2, Network, Package, Zap } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { getEvents, getPods, type ClusterEvent, type Pod } from '@/lib/api';
+import { getDashboard, getPrometheusScalar, type DashboardResponse } from '@/lib/api';
 
 export function KubernetesHealth() {
-  const [pods, setPods] = useState<Pod[]>([]);
-  const [events, setEvents] = useState<ClusterEvent[]>([]);
+  const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,11 +16,10 @@ export function KubernetesHealth() {
 
     async function loadHealth() {
       try {
-        const [podsData, eventsData] = await Promise.all([getPods(), getEvents()]);
+        const dashboardData = await getDashboard();
 
         if (!cancelled) {
-          setPods(podsData);
-          setEvents(eventsData);
+          setDashboard(dashboardData);
           setError(null);
         }
       } catch (error) {
@@ -45,6 +43,10 @@ export function KubernetesHealth() {
     };
   }, []);
 
+  const pods = dashboard?.pods ?? [];
+  const events = dashboard?.events ?? [];
+  const prometheusRunningPods = dashboard ? getPrometheusScalar(dashboard.metrics.running) : 0;
+
   const namespaceRows = useMemo(() => {
     const rows = new Map<string, { name: string; pods: number; healthy: number; warning: number }>();
 
@@ -64,9 +66,9 @@ export function KubernetesHealth() {
     return [...rows.values()].sort((a, b) => b.warning - a.warning || b.pods - a.pods);
   }, [pods]);
 
-  const totalPods = pods.length;
-  const runningPods = pods.filter((pod) => pod.status.toLowerCase() === 'running').length;
-  const warningPods = totalPods - runningPods;
+  const totalPods = dashboard?.summary.pod_count || Math.max(pods.length, prometheusRunningPods);
+  const runningPods = pods.length > 0 ? pods.filter((pod) => pod.status.toLowerCase() === 'running').length : prometheusRunningPods;
+  const warningPods = Math.max(0, totalPods - runningPods);
   const warningEvents = events.filter((event) => event.type.toLowerCase() === 'warning').length;
   const namespaces = namespaceRows.length;
 

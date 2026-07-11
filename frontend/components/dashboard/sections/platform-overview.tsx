@@ -3,7 +3,12 @@
 import React, { useEffect, useState } from 'react';
 import { Activity, AlertCircle, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { getEvents, getIncidentSummary, getPodMetrics, type ClusterEvent, type Incident, type PodMetrics } from '@/lib/api';
+import {
+  getDashboard,
+  getPrometheusAverage,
+  getPrometheusScalar,
+  type DashboardResponse,
+} from '@/lib/api';
 
 interface Metric {
   title: string;
@@ -40,9 +45,7 @@ function getStatusBar(status: Metric['status']) {
 }
 
 export function PlatformOverview() {
-  const [podMetrics, setPodMetrics] = useState<PodMetrics | null>(null);
-  const [events, setEvents] = useState<ClusterEvent[]>([]);
-  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,16 +54,10 @@ export function PlatformOverview() {
 
     async function loadOverview() {
       try {
-        const [metricsData, eventsData, incidentsData] = await Promise.all([
-          getPodMetrics(),
-          getEvents(),
-          getIncidentSummary(),
-        ]);
+        const dashboardData = await getDashboard();
 
         if (!cancelled) {
-          setPodMetrics(metricsData);
-          setEvents(eventsData);
-          setIncidents(incidentsData);
+          setDashboard(dashboardData);
           setError(null);
         }
       } catch (error) {
@@ -84,13 +81,19 @@ export function PlatformOverview() {
     };
   }, []);
 
-  const totalPods = podMetrics?.total_pods ?? 0;
-  const namespacePods = podMetrics?.namespace_pods ?? 0;
-  const failedPods = podMetrics?.failed_pods ?? 0;
-  const systemPods = podMetrics?.system_pods ?? 0;
-  const runningPods = Math.max(0, namespacePods - failedPods);
+  const pods = dashboard?.pods ?? [];
+  const events = dashboard?.events ?? [];
+  const incidents = dashboard?.incidents ?? [];
+  const totalPods = dashboard?.summary.pod_count ?? pods.length;
+  const namespacePods = pods.filter((pod) => pod.namespace === 'ai-devops').length;
+  const failedPods = pods.filter((pod) => pod.namespace === 'ai-devops' && !['Running', 'Succeeded'].includes(pod.status)).length;
+  const runningPodsFromPods = Math.max(0, namespacePods - failedPods);
+  const runningPodsFromPrometheus = dashboard ? getPrometheusScalar(dashboard.metrics.running) : 0;
+  const runningPods = runningPodsFromPods || runningPodsFromPrometheus;
+  const cpuUsage = dashboard ? getPrometheusAverage(dashboard.metrics.cpu) : 0;
+  const memoryUsage = dashboard ? getPrometheusAverage(dashboard.metrics.memory) : 0;
   const warningEvents = events.filter((event) => event.type.toLowerCase() === 'warning').length;
-  const clusterHealth = namespacePods === 0 ? 100 : Math.round((runningPods / namespacePods) * 100);
+  const clusterHealth = totalPods === 0 ? 100 : Math.round((runningPods / totalPods) * 100);
 
   const metrics: Metric[] = [
     {
@@ -110,16 +113,23 @@ export function PlatformOverview() {
     {
       title: 'Running Pods',
       value: runningPods.toLocaleString(),
-      unit: `${namespacePods.toLocaleString()} namespace pods`,
+      unit: `${totalPods.toLocaleString()} total cluster pods`,
       status: failedPods === 0 ? 'healthy' : 'warning',
-      progress: namespacePods === 0 ? 0 : Math.round((runningPods / namespacePods) * 100),
+      progress: totalPods === 0 ? 0 : Math.round((runningPods / totalPods) * 100),
     },
     {
-      title: 'Failed Pods',
-      value: failedPods.toLocaleString(),
-      unit: 'non-running namespace pods',
-      status: failedPods === 0 ? 'healthy' : failedPods < 5 ? 'warning' : 'critical',
-      progress: namespacePods === 0 ? 0 : Math.min(100, Math.round((failedPods / namespacePods) * 100)),
+      title: 'CPU',
+      value: `${cpuUsage.toFixed(1)}%`,
+      unit: dashboard?.metrics.cpu.status === 'success' ? 'average node usage' : 'metric unavailable',
+      status: cpuUsage < 70 ? 'healthy' : cpuUsage < 90 ? 'warning' : 'critical',
+      progress: Math.round(cpuUsage),
+    },
+    {
+      title: 'Memory',
+      value: `${memoryUsage.toFixed(1)}%`,
+      unit: dashboard?.metrics.memory.status === 'success' ? 'average node usage' : 'metric unavailable',
+      status: memoryUsage < 70 ? 'healthy' : memoryUsage < 90 ? 'warning' : 'critical',
+      progress: Math.round(memoryUsage),
     },
     {
       title: 'Warning Events',
@@ -129,9 +139,9 @@ export function PlatformOverview() {
       progress: Math.min(100, warningEvents * 20),
     },
     {
-      title: 'System Pods',
-      value: systemPods.toLocaleString(),
-      unit: `${totalPods.toLocaleString()} total cluster pods`,
+      title: 'Events',
+      value: events.length.toLocaleString(),
+      unit: 'cluster event records',
       status: 'info',
       progress: 100,
     },

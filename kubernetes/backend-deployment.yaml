@@ -33,6 +33,24 @@ spec:
                 secretKeyRef:
                   name: ai-devops-secrets
                   key: GEMINI_API_KEY
+            - name: DASHBOARD_NAMESPACE
+              value: ai-devops
+            - name: DASHBOARD_CACHE_TTL_SECONDS
+              value: "15"
+            - name: DASHBOARD_TIMEOUT_SECONDS
+              value: "4"
+            - name: REDIS_HOST
+              value: redis-master.redis.svc.cluster.local
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_SOCKET_TIMEOUT_SECONDS
+              value: "1"
+            - name: PROMETHEUS_URL
+              value: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+            - name: PROMETHEUS_TIMEOUT_SECONDS
+              value: "2"
+            - name: KUBERNETES_REQUEST_TIMEOUT_SECONDS
+              value: "3"
 
           resources:
             requests:

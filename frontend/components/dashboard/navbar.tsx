@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Menu, Search, Bell, Settings } from 'lucide-react';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,7 +19,6 @@ interface NavbarProps {
 export function Navbar({ onMenuToggle }: NavbarProps) {
   return (
     <div className="border-b border-border bg-card h-16 px-6 flex items-center justify-between sticky top-0 z-50">
-      {/* Left Section */}
       <div className="flex items-center gap-4">
         <Button
           variant="ghost"
@@ -38,7 +37,6 @@ export function Navbar({ onMenuToggle }: NavbarProps) {
         </div>
       </div>
 
-      {/* Center Section */}
       <div className="flex-1 max-w-md mx-8">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -49,9 +47,7 @@ export function Navbar({ onMenuToggle }: NavbarProps) {
         </div>
       </div>
 
-      {/* Right Section */}
       <div className="flex items-center gap-4">
-        {/* Cluster Selector */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="gap-2">
@@ -65,25 +61,20 @@ export function Navbar({ onMenuToggle }: NavbarProps) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* AI Provider Badge */}
         <div className="px-3 py-1 rounded-full bg-secondary border border-border text-xs font-medium">
           Gemini Flash
         </div>
 
-        {/* Notification Bell */}
         <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground relative">
           <Bell className="w-5 h-5" />
           <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
         </Button>
 
-        {/* Settings */}
         <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
           <Settings className="w-5 h-5" />
         </Button>
 
-        {/* Avatar */}
         <Avatar className="w-8 h-8">
-          <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=user" />
           <AvatarFallback>SRE</AvatarFallback>
         </Avatar>
       </div>

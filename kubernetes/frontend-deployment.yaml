@@ -34,6 +34,11 @@ spec:
 
             - containerPort: 3000
 
+          env:
+
+            - name: BACKEND_INTERNAL_URL
+              value: http://ai-devops-api.ai-devops.svc.cluster.local:8000
+
           resources:
 
             requests:
