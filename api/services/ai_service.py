@@ -1,10 +1,16 @@
 import os
 import json
 
-from google import genai
+from dotenv import load_dotenv
+from groq import Groq
 
+load_dotenv()
+print("Groq Key Loaded:", bool(os.getenv("GROQ_API_KEY")))
 
-PROVIDER = "gemini-2.5-flash"
+PROVIDER = os.getenv(
+    "GROQ_MODEL",
+    "llama-3.3-70b-versatile"
+)
 
 client = None
 
@@ -15,12 +21,13 @@ def _get_client():
     if client:
         return client
 
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("GROQ_API_KEY")
 
     if not api_key:
-        raise RuntimeError("GEMINI_API_KEY is not configured")
+        raise RuntimeError("GROQ_API_KEY is not configured")
 
-    client = genai.Client(api_key=api_key)
+    client = Groq(api_key=api_key)
+
     return client
 
 
@@ -45,13 +52,23 @@ def _provider_error(code, message):
 def _classify_provider_error(error):
     text = str(error).lower()
 
-    if "429" in text or "quota" in text or "rate" in text or "resource_exhausted" in text:
+    if (
+        "429" in text
+        or "quota" in text
+        or "rate" in text
+        or "limit" in text
+    ):
         return _provider_error(
             "AI_RATE_LIMITED",
             "AI provider quota or rate limit was reached. Showing Kubernetes-derived fallback analysis."
         )
 
-    if "api_key" in text or "permission" in text or "unauthorized" in text or "forbidden" in text:
+    if (
+        "api_key" in text
+        or "authentication" in text
+        or "unauthorized" in text
+        or "forbidden" in text
+    ):
         return _provider_error(
             "AI_AUTH_FAILED",
             "AI provider authentication failed. Showing Kubernetes-derived fallback analysis."
@@ -71,6 +88,7 @@ def _fallback_analysis(incident, namespace="ai-devops", error=None):
 
     reason_text = ", ".join(reasons) if reasons else "Kubernetes warning"
     message_text = messages[0] if messages else "Kubernetes reported warning events for this pod."
+
     lower_context = " ".join(reasons + messages + [logs]).lower()
 
     recommended_fix = [
@@ -78,27 +96,43 @@ def _fallback_analysis(incident, namespace="ai-devops", error=None):
         "Review container logs for the failing pod before applying remediation.",
     ]
 
-    if "imagepullbackoff" in lower_context or "errimagepull" in lower_context or "failed to pull image" in lower_context:
+    if (
+        "imagepullbackoff" in lower_context
+        or "errimagepull" in lower_context
+        or "failed to pull image" in lower_context
+    ):
         root_cause = "Container image pull failure"
+
         recommended_fix = [
-            "Verify the image name, tag, registry, and pull secret configuration.",
-            "Rebuild or republish the image using a supported OCI or Docker v2 manifest format.",
-            "Restart or redeploy the workload after the image reference is fixed.",
+            "Verify the image name, tag, registry, and imagePullSecrets.",
+            "Confirm the image exists in the registry.",
+            "Redeploy the workload after correcting the image reference."
         ]
-    elif "oom" in lower_context or "memory" in lower_context:
-        root_cause = "Container memory pressure or OOM restart"
+
+    elif (
+        "oom" in lower_context
+        or "memory" in lower_context
+    ):
+        root_cause = "Container memory pressure"
+
         recommended_fix = [
-            "Inspect memory usage and container limits for the affected workload.",
-            "Increase memory limits only as a short-term mitigation if the workload is memory constrained.",
-            "Review application memory behavior and restart history before redeploying.",
+            "Inspect memory usage.",
+            "Increase memory limits if appropriate.",
+            "Review application memory leaks."
         ]
-    elif "backoff" in lower_context or "crashloop" in lower_context:
-        root_cause = "Container restart backoff"
+
+    elif (
+        "crashloop" in lower_context
+        or "backoff" in lower_context
+    ):
+        root_cause = "CrashLoopBackOff"
+
         recommended_fix = [
-            "Inspect previous container logs to identify the crash reason.",
-            "Check recent configuration, image, secret, and dependency changes.",
-            "Roll back or redeploy after the failing startup condition is corrected.",
+            "Inspect previous container logs.",
+            "Check startup configuration.",
+            "Rollback recent deployments if necessary."
         ]
+
     else:
         root_cause = reason_text
 
@@ -107,16 +141,17 @@ def _fallback_analysis(incident, namespace="ai-devops", error=None):
         "provider": PROVIDER,
         "root_cause": root_cause,
         "severity": incident.get("severity", "high"),
-        "explanation": f"{message_text} AI analysis is currently unavailable, so this summary is based on Kubernetes events and pod logs.",
+        "explanation": f"{message_text} AI analysis is unavailable, so this summary is based on Kubernetes events and logs.",
         "recommended_fix": recommended_fix,
         "kubectl_commands": [
             f"kubectl describe pod {pod} -n {namespace}",
             f"kubectl logs {pod} -n {namespace} --tail=100",
-            f"kubectl get events -n {namespace} --field-selector involvedObject.name={pod}",
+            f"kubectl get events -n {namespace} --field-selector involvedObject.name={pod}"
         ],
-        "error": error or _provider_error(
+        "error": error
+        or _provider_error(
             "AI_ANALYSIS_UNAVAILABLE",
-            "AI analysis is unavailable. Showing Kubernetes-derived fallback analysis."
+            "AI analysis is unavailable."
         )
     }
 
@@ -125,52 +160,86 @@ def _normalize_success(parsed):
     return {
         "status": "success",
         "provider": PROVIDER,
-        "root_cause": _as_string(parsed.get("root_cause"), "AI analysis completed"),
-        "severity": _as_string(parsed.get("severity"), "unknown"),
-        "explanation": _as_string(parsed.get("explanation"), "AI analysis completed successfully."),
-        "recommended_fix": _as_string_list(parsed.get("recommended_fix")),
-        "kubectl_commands": _as_string_list(parsed.get("kubectl_commands")),
+        "root_cause": _as_string(
+            parsed.get("root_cause"),
+            "AI analysis completed"
+        ),
+        "severity": _as_string(
+            parsed.get("severity"),
+            "unknown"
+        ),
+        "explanation": _as_string(
+            parsed.get("explanation"),
+            "AI analysis completed successfully."
+        ),
+        "recommended_fix": _as_string_list(
+            parsed.get("recommended_fix")
+        ),
+        "kubectl_commands": _as_string_list(
+            parsed.get("kubectl_commands")
+        ),
         "error": None
     }
 
 
-def analyze_incident(incident, namespace="ai-devops"):
+def analyze_incident(
+    incident,
+    namespace="ai-devops"
+):
 
     prompt = f"""
-You are an expert Kubernetes SRE.
+You are a Senior Kubernetes Site Reliability Engineer.
 
-Analyze this Kubernetes incident and return STRICT JSON only.
-Do not include markdown fences or prose outside the JSON object.
+Analyze the following Kubernetes incident.
+
+Return ONLY valid JSON.
 
 Incident:
+
 {json.dumps(incident, indent=2)}
 
 Return format:
+
 {{
-  "root_cause": "...",
-  "severity": "...",
-  "explanation": "...",
-  "recommended_fix": [
-    "..."
+  "root_cause":"...",
+  "severity":"...",
+  "explanation":"...",
+  "recommended_fix":[
+      "...",
+      "..."
   ],
-  "kubectl_commands": [
-    "..."
+  "kubectl_commands":[
+      "...",
+      "..."
   ]
 }}
 """
 
     try:
 
-        response = _get_client().models.generate_content(
+        response = _get_client().chat.completions.create(
+
             model=PROVIDER,
-            contents=prompt
+
+            temperature=0.2,
+
+            response_format={
+                "type": "json_object"
+            },
+
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert Kubernetes Site Reliability Engineer."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
         )
 
-        text = (response.text or "").strip()
-
-        # remove markdown wrappers
-        text = text.replace("```json", "")
-        text = text.replace("```", "")
+        text = response.choices[0].message.content.strip()
 
         parsed = json.loads(text)
 
@@ -180,12 +249,21 @@ Return format:
                 namespace,
                 _provider_error(
                     "AI_INVALID_RESPONSE",
-                    "AI provider returned an invalid response. Showing Kubernetes-derived fallback analysis."
+                    "AI provider returned invalid JSON."
                 )
             )
 
         return _normalize_success(parsed)
 
     except Exception as e:
+        print("\n========== GROQ ERROR ==========")
+        print(type(e))
+        print(repr(e))
+        print(str(e))
+        print("================================\n")
 
-        return _fallback_analysis(incident, namespace, _classify_provider_error(e))
+        return _fallback_analysis(
+            incident,
+            namespace,
+            _classify_provider_error(e)
+        )
