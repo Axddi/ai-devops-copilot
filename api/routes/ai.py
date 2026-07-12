@@ -1,47 +1,49 @@
 from fastapi import APIRouter
-<<<<<<< HEAD
-=======
-from models.incident import AnalyzedIncident
->>>>>>> 90a80e94a3c0518c10a393feb096c0977fb8a6ce
-from services.incident_service import generate_incident_summary
+
+from services.kubernetes_service import (
+    get_warning_events,
+    get_pod_logs,
+)
+
 from services.ai_service import analyze_incident
 
 router = APIRouter()
 
 
-<<<<<<< HEAD
 @router.get("/analyze-incidents")
 async def analyze_incidents():
 
-    incidents = generate_incident_summary()
-=======
-@router.get("/analyze-incidents", response_model=list[AnalyzedIncident])
-async def analyze_incidents(namespace: str = "ai-devops"):
-
-    incidents = generate_incident_summary(namespace)
->>>>>>> 90a80e94a3c0518c10a393feb096c0977fb8a6ce
+    warnings = get_warning_events("default")
 
     results = []
 
-    for incident in incidents:
+    for event in warnings:
 
-<<<<<<< HEAD
-        analysis = analyze_incident(incident)
+        pod = event["object"]
+
+        logs = get_pod_logs(
+            pod_name=pod,
+            namespace="default"
+        )
+
+        incident = {
+            "pod": pod,
+            "reason": event["reason"],
+            "message": event["message"],
+            "logs": logs
+        }
+
+        ai_result = analyze_incident(
+            incident,
+            namespace="default"
+        )
 
         results.append({
-            "incident": incident,
-            "analysis": analysis
+            "pod": pod,
+            "reason": event["reason"],
+            "message": event["message"],
+            "logs": logs,
+            "analysis": ai_result
         })
 
     return results
-=======
-        analysis = analyze_incident(incident, namespace)
-
-        results.append({
-            "incident": incident,
-            "ai_analysis": analysis,
-            "provider": analysis["provider"]
-        })
-
-    return results
->>>>>>> 90a80e94a3c0518c10a393feb096c0977fb8a6ce

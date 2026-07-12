@@ -25,3 +25,9 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+# Environment files
+.env
+*.env
+api/.env
+frontend/.env
+frontend/.env.local

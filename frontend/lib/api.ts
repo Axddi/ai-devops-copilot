@@ -285,15 +285,23 @@ function normalizeDashboard(value: unknown): DashboardResponse {
 }
 
 function normalizeAnalyzedIncident(value: unknown): AnalyzedIncident {
-  const outer = isRecord(value) ? value : {};
-  const aiPayload = isRecord(outer.ai_analysis) ? outer.ai_analysis : {};
-  const nestedPayload = isRecord(aiPayload.ai_analysis) || isRecord(aiPayload.incident) ? aiPayload : outer;
-  const aiAnalysis = normalizeAnalysis(nestedPayload.ai_analysis ?? outer.ai_analysis);
+  const data = isRecord(value) ? value : {};
+
+  const analysis = normalizeAnalysis(data.analysis);
 
   return {
-    incident: normalizeIncident(outer.incident ?? nestedPayload.incident),
-    ai_analysis: aiAnalysis,
-    provider: stringValue(outer.provider ?? nestedPayload.provider ?? aiAnalysis.provider, 'unknown'),
+    incident: {
+      pod: stringValue(data.pod, "unknown-pod"),
+      namespace: stringValue(data.namespace, "default"),
+      severity: analysis.severity || "unknown",
+      reasons: [stringValue(data.reason)],
+      messages: [stringValue(data.message)],
+      logs: stringValue(data.logs),
+    },
+
+    ai_analysis: analysis,
+
+    provider: analysis.provider,
   };
 }
 

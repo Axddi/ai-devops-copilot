@@ -99,3 +99,16 @@ def get_namespace_events(namespace: str = "default"):
         }
         for event in events.items
     ]
+    
+def get_warning_events(namespace: str = "default"):
+    """
+    Returns only Warning events from Kubernetes.
+    """
+
+    events = get_namespace_events(namespace)
+
+    return [
+        event
+        for event in events
+        if event["type"] == "Warning"
+    ]
