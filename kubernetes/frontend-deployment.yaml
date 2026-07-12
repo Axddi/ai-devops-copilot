@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: ai-devops-frontend
+  namespace: ai-devops
+
+spec:
+
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: ai-devops-frontend
+
+  template:
+
+    metadata:
+
+      labels:
+        app: ai-devops-frontend
+
+    spec:
+
+      containers:
+
+        - name: frontend
+
+          image: 678882708618.dkr.ecr.ap-south-1.amazonaws.com/ai-devops-frontend:latest
+
+          imagePullPolicy: Always
+
+          ports:
+
+            - containerPort: 3000
+
+          env:
+
+            - name: BACKEND_INTERNAL_URL
+              value: http://ai-devops-api.ai-devops.svc.cluster.local:8000
+
+          resources:
+
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

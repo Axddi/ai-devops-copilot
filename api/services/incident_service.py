@@ -21,11 +21,12 @@ def generate_incident_summary(namespace: str = "ai-devops"):
 
             try:
                 logs = get_pod_logs(pod_name, namespace)
-            except:
+            except Exception:
                 logs = "Unable to fetch logs"
 
             incidents[pod_name] = {
                 "pod": pod_name,
+                "namespace": namespace,
                 "severity": "high",
                 "reasons": [],
                 "messages": [],

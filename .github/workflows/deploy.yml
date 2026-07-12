@@ -1,0 +1,75 @@
+name: Deploy AI DevOps Copilot
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Backend Image
+        run: |
+          docker build -t ai-devops-api ./api
+
+      - name: Tag Backend
+        run: |
+          docker tag ai-devops-api:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/ai-devops-api:latest
+
+      - name: Push Backend
+        run: |
+          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/ai-devops-api:latest
+
+      - name: Build Frontend Image
+        run: |
+          docker build -t ai-devops-frontend ./frontend
+
+      - name: Tag Frontend
+        run: |
+          docker tag ai-devops-frontend:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/ai-devops-frontend:latest
+
+      - name: Push Frontend
+        run: |
+          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/ai-devops-frontend:latest
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region $AWS_REGION \
+            --name ai-devops-copilot
+
+      - name: Restart Backend Deployment
+        run: |
+          kubectl rollout restart deployment/ai-devops-api -n ai-devops
+
+      - name: Restart Frontend Deployment
+        run: |
+          kubectl rollout restart deployment/ai-devops-frontend -n ai-devops
+
+      - name: Verify Rollout
+        run: |
+          kubectl rollout status deployment/ai-devops-api -n ai-devops
+          kubectl rollout status deployment/ai-devops-frontend -n ai-devops
