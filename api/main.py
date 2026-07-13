@@ -1,12 +1,18 @@
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routes.pods import router as pods_router
 from routes.events import router as events_router
 from routes.ai import router as ai_router
 from routes.incidents import router as incidents_router
+from routes.chat import router as chat_router
 from routes.prometheus import router as prometheus_router
 from routes.logs import router as logs_router
 from routes.dashboard import router as dashboard_router
+
+load_dotenv()
+
+
 app = FastAPI(
     title="AI DevOps Copilot",
     version="1.0.0"
@@ -19,6 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(ai_router)
+app.include_router(chat_router)
 app.include_router(incidents_router)
 app.include_router(dashboard_router)
 app.include_router(pods_router)

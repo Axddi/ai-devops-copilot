@@ -1,11 +1,13 @@
 'use client';
 
 import { useSession, signIn, signOut } from "next-auth/react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { MessageSquare } from "lucide-react";
 import { Menu, Search, Bell, Settings } from 'lucide-react';
 import { logout } from "@/lib/logout";
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,6 +64,12 @@ export function Navbar({ onMenuToggle }: NavbarProps) {
             <DropdownMenuItem>dev-eu-west-1</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <Link href="/chat">
+          <Button variant="ghost" size="icon">
+            <MessageSquare className="h-5 w-5" />
+          </Button>
+        </Link>
 
         <div className="px-3 py-1 rounded-full bg-secondary border border-border text-xs font-medium">
           Groq · Llama 3.3 70B
