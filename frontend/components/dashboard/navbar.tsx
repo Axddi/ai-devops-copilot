@@ -1,7 +1,8 @@
 'use client';
 
-import React from 'react';
+import { useSession, signIn, signOut } from "next-auth/react";
 import { Menu, Search, Bell, Settings } from 'lucide-react';
+import { logout } from "@/lib/logout";
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ interface NavbarProps {
 }
 
 export function Navbar({ onMenuToggle }: NavbarProps) {
+  const { data: session } = useSession();
   return (
     <div className="border-b border-border bg-card h-16 px-6 flex items-center justify-between sticky top-0 z-50">
       <div className="flex items-center gap-4">
@@ -62,7 +64,7 @@ export function Navbar({ onMenuToggle }: NavbarProps) {
         </DropdownMenu>
 
         <div className="px-3 py-1 rounded-full bg-secondary border border-border text-xs font-medium">
-          Gemini Flash
+          Groq · Llama 3.3 70B
         </div>
 
         <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground relative">
@@ -74,9 +76,43 @@ export function Navbar({ onMenuToggle }: NavbarProps) {
           <Settings className="w-5 h-5" />
         </Button>
 
-        <Avatar className="w-8 h-8">
-          <AvatarFallback>SRE</AvatarFallback>
+<DropdownMenu>
+    <DropdownMenuTrigger asChild>
+        <Avatar className="cursor-pointer w-8 h-8">
+            <AvatarFallback>
+                {session?.user?.name?.charAt(0) ?? "U"}
+            </AvatarFallback>
         </Avatar>
+    </DropdownMenuTrigger>
+
+    <DropdownMenuContent align="end">
+
+        {session ? (
+            <>
+                <DropdownMenuItem disabled>
+                    {session.user?.name}
+                </DropdownMenuItem>
+
+                <DropdownMenuItem disabled>
+                    {session.user?.email}
+                </DropdownMenuItem>
+
+                <DropdownMenuItem
+                    onClick={logout}
+                >
+                    Logout
+                </DropdownMenuItem>
+            </>
+        ) : (
+            <DropdownMenuItem
+                onClick={() => signIn("cognito")}
+            >
+                Login
+            </DropdownMenuItem>
+        )}
+
+    </DropdownMenuContent>
+</DropdownMenu>
       </div>
     </div>
   );

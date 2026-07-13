@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Providers from "@/components/providers";
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
@@ -41,10 +42,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className="font-sans antialiased bg-background text-foreground">
-        {children}
-        {process.env.NODE_ENV === 'production' && <Analytics />}
-      </body>
+  <body className="font-sans antialiased bg-background text-foreground">
+      <Providers>
+          {children}
+      </Providers>
+
+      {process.env.NODE_ENV === "production" && <Analytics />}
+  </body>
     </html>
   )
 }
