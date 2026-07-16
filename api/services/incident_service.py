@@ -1,6 +1,7 @@
 from services.kubernetes_service import (
     get_namespace_events,
-    get_pod_logs
+    get_pod_logs,
+    get_all_pods,
 )
 
 
@@ -8,14 +9,23 @@ def generate_incident_summary(namespace: str = "ai-devops"):
 
     events = get_namespace_events(namespace)
 
+    current_pods = {
+        pod["name"]
+        for pod in get_all_pods()
+        if pod["namespace"] == namespace
+    }
+
     incidents = {}
-    
+
     for event in events:
 
         if event["type"] != "Warning":
             continue
 
         pod_name = event["object"]
+
+        if pod_name not in current_pods:
+            continue
 
         if pod_name not in incidents:
 
@@ -30,7 +40,7 @@ def generate_incident_summary(namespace: str = "ai-devops"):
                 "severity": "high",
                 "reasons": [],
                 "messages": [],
-                "logs": logs[:500]
+                "logs": logs[:500],
             }
 
         if event["reason"] not in incidents[pod_name]["reasons"]:
@@ -38,4 +48,5 @@ def generate_incident_summary(namespace: str = "ai-devops"):
 
         if event["message"] not in incidents[pod_name]["messages"]:
             incidents[pod_name]["messages"].append(event["message"])
+
     return list(incidents.values())

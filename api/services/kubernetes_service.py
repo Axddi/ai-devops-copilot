@@ -4,17 +4,17 @@ from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
 from kubernetes.config.config_exception import ConfigException
 
-KUBERNETES_REQUEST_TIMEOUT_SECONDS = float(os.getenv("KUBERNETES_REQUEST_TIMEOUT_SECONDS", "3"))
+KUBERNETES_REQUEST_TIMEOUT_SECONDS = float(
+    os.getenv("KUBERNETES_REQUEST_TIMEOUT_SECONDS", "3")
+)
 
 
 def get_k8s_client():
     try:
         config.load_incluster_config()
-        print("Loaded in-cluster Kubernetes configuration")
     except ConfigException:
         try:
             config.load_kube_config()
-            print("Loaded local kubeconfig")
         except ConfigException:
             raise RuntimeError(
                 "No Kubernetes configuration found. "
@@ -27,44 +27,83 @@ def get_k8s_client():
 def get_all_pods():
     try:
         v1 = get_k8s_client()
-
-        pods = v1.list_pod_for_all_namespaces(_request_timeout=KUBERNETES_REQUEST_TIMEOUT_SECONDS)
+        pods = v1.list_pod_for_all_namespaces(
+            _request_timeout=KUBERNETES_REQUEST_TIMEOUT_SECONDS
+        )
     except (RuntimeError, ApiException):
         return []
 
-    return [
-        {
-            "name": pod.metadata.name,
-            "namespace": pod.metadata.namespace,
-            "status": pod.status.phase,
-        }
-        for pod in pods.items
-    ]
+    result = []
+
+    for pod in pods.items:
+
+        ready = True
+        reason = pod.status.phase
+
+        if pod.status.container_statuses:
+            for container in pod.status.container_statuses:
+
+                if not container.ready:
+                    ready = False
+
+                if container.state:
+
+                    if container.state.waiting:
+                        reason = container.state.waiting.reason
+
+                    elif container.state.terminated:
+                        reason = container.state.terminated.reason
+
+        result.append(
+            {
+                "name": pod.metadata.name,
+                "namespace": pod.metadata.namespace,
+                "status": pod.status.phase,
+                "ready": ready,
+                "reason": reason,
+            }
+        )
+
+    return result
 
 
-def get_pod_metrics(namespace: str = "ai-devops"):
+def get_pod_metrics(namespace="ai-devops"):
     pods = get_all_pods()
 
     namespace_pods = [
-        pod for pod in pods
-        if pod["namespace"] == namespace
+        p for p in pods
+        if p["namespace"] == namespace
     ]
 
-    failed_pods = [
-        pod for pod in namespace_pods
-        if pod["status"] not in ["Running", "Succeeded"]
+    unhealthy = [
+        p
+        for p in namespace_pods
+        if (
+            not p["ready"]
+            or p["reason"]
+            in [
+                "CrashLoopBackOff",
+                "ImagePullBackOff",
+                "ErrImagePull",
+                "CreateContainerConfigError",
+                "CreateContainerError",
+                "RunContainerError",
+                "Error",
+            ]
+        )
     ]
 
     system_pods = [
-        pod for pod in pods
-        if pod["namespace"] == "kube-system"
+        p for p in pods
+        if p["namespace"] == "kube-system"
     ]
 
     return {
         "namespace": namespace,
         "total_pods": len(pods),
         "namespace_pods": len(namespace_pods),
-        "failed_pods": len(failed_pods),
+        "failed_pods": len(unhealthy),
+        "healthy_pods": len(namespace_pods) - len(unhealthy),
         "system_pods": len(system_pods),
     }
 
@@ -78,15 +117,20 @@ def get_pod_logs(pod_name: str, namespace: str = "default"):
             namespace=namespace,
             _request_timeout=KUBERNETES_REQUEST_TIMEOUT_SECONDS,
         )
+
     except (RuntimeError, ApiException):
         return "Unable to fetch logs"
 
 
-def get_namespace_events(namespace: str = "default"):
+def get_namespace_events(namespace="default"):
     try:
         v1 = get_k8s_client()
 
-        events = v1.list_namespaced_event(namespace, _request_timeout=KUBERNETES_REQUEST_TIMEOUT_SECONDS)
+        events = v1.list_namespaced_event(
+            namespace,
+            _request_timeout=KUBERNETES_REQUEST_TIMEOUT_SECONDS,
+        )
+
     except (RuntimeError, ApiException):
         return []
 
@@ -99,16 +143,13 @@ def get_namespace_events(namespace: str = "default"):
         }
         for event in events.items
     ]
-    
-def get_warning_events(namespace: str = "default"):
-    """
-    Returns only Warning events from Kubernetes.
-    """
 
+
+def get_warning_events(namespace="default"):
     events = get_namespace_events(namespace)
 
     return [
-        event
-        for event in events
-        if event["type"] == "Warning"
+        e
+        for e in events
+        if e["type"] == "Warning"
     ]

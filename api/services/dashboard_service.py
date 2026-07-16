@@ -38,12 +38,34 @@ EMPTY_METRIC = {
 
 
 def cluster_summary(data):
+
+    unhealthy = [
+        pod
+        for pod in data["pods"]
+        if (
+            not pod.get("ready", False)
+            or pod.get("reason")
+            in [
+                "CrashLoopBackOff",
+                "ImagePullBackOff",
+                "ErrImagePull",
+                "CreateContainerConfigError",
+                "CreateContainerError",
+                "RunContainerError",
+                "Error",
+            ]
+        )
+    ]
+
+    healthy = len(data["pods"]) - len(unhealthy)
+
     return {
-        "healthy": len(data["incidents"]) == 0,
+        "healthy": len(unhealthy) == 0,
+        "healthy_pods": healthy,
+        "unhealthy_pods": len(unhealthy),
         "pod_count": len(data["pods"]),
         "incident_count": len(data["incidents"]),
     }
-
 
 def resolve_future(future, fallback):
     if not future.done():

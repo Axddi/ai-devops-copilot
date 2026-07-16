@@ -43,6 +43,8 @@ export interface Pod {
   name: string;
   namespace: string;
   status: string;
+  ready: boolean;
+  reason: string;
 }
 
 export interface ClusterEvent {
@@ -215,6 +217,8 @@ function normalizePod(value: unknown): Pod {
     name: stringValue(pod.name, 'unknown-pod'),
     namespace: stringValue(pod.namespace, 'default'),
     status: stringValue(pod.status, 'Unknown'),
+    ready: booleanValue(pod.ready, false),
+    reason: stringValue(pod.reason, 'Unknown'),
   };
 }
 
@@ -363,8 +367,12 @@ export async function getDashboard(options: { force?: boolean } = {}) {
 
 function metricsFromDashboard(dashboard: DashboardResponse, namespace: string): PodMetrics {
   const namespacePods = dashboard.pods.filter((pod) => pod.namespace === namespace);
-  const failedPods = namespacePods.filter((pod) => !['Running', 'Succeeded'].includes(pod.status));
-  const systemPods = dashboard.pods.filter((pod) => pod.namespace === 'kube-system');
+const failedPods = namespacePods.filter(
+  (pod) =>
+    !pod.ready ||
+    pod.reason !== "Running"
+);
+const systemPods = dashboard.pods.filter((pod) => pod.namespace === 'kube-system');
 
   return {
     namespace,
