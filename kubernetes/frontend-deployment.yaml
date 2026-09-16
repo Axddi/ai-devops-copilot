@@ -38,6 +38,8 @@ spec:
 
             - name: BACKEND_INTERNAL_URL
               value: http://ai-devops-api.ai-devops.svc.cluster.local:8000
+            - name: AUTH_TRUST_HOST
+              value: "true"
 
           resources:
 

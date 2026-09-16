@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter
 
 from services.kubernetes_service import (
@@ -11,9 +13,10 @@ router = APIRouter()
 
 
 @router.get("/analyze-incidents")
-async def analyze_incidents():
+async def analyze_incidents(namespace: str | None = None):
 
-    warnings = get_warning_events("default")
+    target_namespace = namespace or os.getenv("DASHBOARD_NAMESPACE", "ai-devops")
+    warnings = get_warning_events(target_namespace)
 
     results = []
 
@@ -23,11 +26,15 @@ async def analyze_incidents():
 
         logs = get_pod_logs(
             pod_name=pod,
-            namespace="default"
+            namespace=target_namespace
         )
 
         incident = {
             "pod": pod,
+            "namespace": target_namespace,
+            "severity": "high",
+            "reasons": [event["reason"]],
+            "messages": [event["message"]],
             "reason": event["reason"],
             "message": event["message"],
             "logs": logs
@@ -35,11 +42,12 @@ async def analyze_incidents():
 
         ai_result = analyze_incident(
             incident,
-            namespace="default"
+            namespace=target_namespace
         )
 
         results.append({
             "pod": pod,
+            "namespace": target_namespace,
             "reason": event["reason"],
             "message": event["message"],
             "logs": logs,

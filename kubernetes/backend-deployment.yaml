@@ -33,6 +33,18 @@ spec:
                 secretKeyRef:
                   name: ai-devops-secrets
                   key: GEMINI_API_KEY
+            - name: GROQ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-devops-secrets
+                  key: GROQ_API_KEY
+                  optional: true
+            - name: GROQ_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: ai-devops-secrets
+                  key: GROQ_MODEL
+                  optional: true
             - name: DASHBOARD_NAMESPACE
               value: ai-devops
             - name: DASHBOARD_CACHE_TTL_SECONDS

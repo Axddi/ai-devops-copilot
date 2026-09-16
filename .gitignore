@@ -1,12 +1,14 @@
 
 # Ignore all .pyc files
 *.pyc
+**/__pycache__/
 
 # Ignore the venv folder
 venv/
 venv-1/
 venv-2/
 __pycache__/
+.venv/
 
 # Ignore all log files
 *.log
@@ -18,6 +20,7 @@ temp/
 **/.terraform/
 *.tfstate
 *.tfstate.*
+terraform.tfstate.d/
 *.tfvars
 *.tfvars.json
 crash.log
@@ -31,3 +34,11 @@ override.tf.json
 api/.env
 frontend/.env
 frontend/.env.local
+frontend/.env*.local
+
+# Frontend build output
+node_modules/
+.next/
+frontend/node_modules/
+frontend/.next/
+*.tsbuildinfo
