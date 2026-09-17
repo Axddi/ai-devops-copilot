@@ -13,8 +13,9 @@ from routes.dashboard import router as dashboard_router
 load_dotenv()
 
 
+
 app = FastAPI(
-    title="AI DevOps Copilot",
+    title="AI DevOps Copilot.",
     version="1.0.0"
 )
 app.add_middleware(
