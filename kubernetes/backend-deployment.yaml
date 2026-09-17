@@ -20,7 +20,7 @@ spec:
       containers:
         - name: api
 
-          image: 678882708618.dkr.ecr.ap-south-1.amazonaws.com/ai-devops-api:latest
+          image: 122610523913.dkr.ecr.ap-south-1.amazonaws.com/ai-devops-api:latest
 
           imagePullPolicy: Always
 

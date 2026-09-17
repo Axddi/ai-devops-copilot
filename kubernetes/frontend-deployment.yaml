@@ -26,7 +26,7 @@ spec:
 
         - name: frontend
 
-          image: 678882708618.dkr.ecr.ap-south-1.amazonaws.com/ai-devops-frontend:latest
+          image: 122610523913.dkr.ecr.ap-south-1.amazonaws.com/ai-devops-frontend:latest
 
           imagePullPolicy: Always
 
