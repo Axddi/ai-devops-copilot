@@ -2,6 +2,37 @@ import NextAuth from "next-auth";
 import Cognito from "next-auth/providers/cognito";
 
 const cognitoRoles = ["Admin", "SRE", "Viewer"] as const;
+const cookiePrefix = process.env.AUTH_COOKIE_PREFIX;
+const secureCookies = process.env.AUTH_URL?.startsWith("https://") ?? false;
+
+const appCookies = cookiePrefix
+  ? {
+      sessionToken: {
+        name: `${cookiePrefix}.session-token`,
+        options: { httpOnly: true, sameSite: "lax" as const, path: "/", secure: secureCookies },
+      },
+      callbackUrl: {
+        name: `${cookiePrefix}.callback-url`,
+        options: { httpOnly: true, sameSite: "lax" as const, path: "/", secure: secureCookies },
+      },
+      csrfToken: {
+        name: `${cookiePrefix}.csrf-token`,
+        options: { httpOnly: true, sameSite: "lax" as const, path: "/", secure: secureCookies },
+      },
+      pkceCodeVerifier: {
+        name: `${cookiePrefix}.pkce-code-verifier`,
+        options: { httpOnly: true, sameSite: "lax" as const, path: "/", secure: secureCookies },
+      },
+      state: {
+        name: `${cookiePrefix}.state`,
+        options: { httpOnly: true, sameSite: "lax" as const, path: "/", secure: secureCookies },
+      },
+      nonce: {
+        name: `${cookiePrefix}.nonce`,
+        options: { httpOnly: true, sameSite: "lax" as const, path: "/", secure: secureCookies },
+      },
+    }
+  : undefined;
 
 function isCognitoRole(value: unknown): value is (typeof cognitoRoles)[number] {
   return cognitoRoles.some((role) => role === value);
@@ -98,8 +129,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: {
     strategy: "jwt",
   },
+  cookies: appCookies,
   callbacks: {
     authorized({ auth, request }) {
+      if (process.env.PUBLIC_DEMO_MODE === "true") {
+        return request.nextUrl.pathname === "/demo" ||
+          request.nextUrl.pathname.startsWith("/demo/")
+          ? true
+          : Response.redirect(new URL("/demo", process.env.PUBLIC_DEMO_URL));
+      }
       if (request.nextUrl.pathname === "/unauthorized") return true;
       if (auth?.user && !auth.user.role) {
         return Response.redirect(new URL("/unauthorized", request.nextUrl));

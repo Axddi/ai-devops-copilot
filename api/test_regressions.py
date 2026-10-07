@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import time
 from types import SimpleNamespace
 
@@ -11,10 +12,14 @@ from models.chat import ChatRequest
 from main import app
 from routes import ai as ai_route
 from routes import chat as chat_route
+from routes import demo as demo_route
 from services import auth_service, kubernetes_service
-from services.ai_service import _fallback_analysis
+from services.ai_service import _classify_provider_error, _fallback_analysis
 from services.dashboard_service import cluster_summary
 from services import history_service
+from services import incident_service
+from services import demo_service
+from kubernetes.config.config_exception import ConfigException
 
 
 def test_chat_request_validates_and_bounds_conversation_history():
@@ -85,6 +90,106 @@ def test_chat_does_not_expose_provider_exception(monkeypatch):
 
     assert error.value.status_code == 502
     assert error.value.detail == "AI provider is unavailable."
+
+
+def test_incident_summary_fetches_kubernetes_data_concurrently(monkeypatch):
+    listings_started = threading.Barrier(2)
+    logs_started = threading.Barrier(2)
+
+    def list_pods():
+        listings_started.wait(timeout=2)
+        return [
+            {"name": "pod-1", "namespace": "production", "ready": False},
+            {"name": "pod-2", "namespace": "production", "ready": False},
+            {"name": "pod-3", "namespace": "production", "ready": True},
+        ]
+
+    def list_events(namespace):
+        listings_started.wait(timeout=2)
+        return [
+            {
+                "type": "Warning",
+                "object": "pod-1",
+                "reason": "BackOff",
+                "message": "container is restarting",
+            },
+            {
+                "type": "Warning",
+                "object": "pod-2",
+                "reason": "OOMKilled",
+                "message": "container exceeded memory",
+            },
+            {
+                "type": "Warning",
+                "object": "pod-3",
+                "reason": "Unhealthy",
+                "message": "startup probe failed before pod became ready",
+            },
+            {
+                "type": "Normal",
+                "object": "pod-1",
+                "reason": "Pulled",
+                "message": "image pulled",
+            },
+        ]
+
+    def read_logs(pod_name, namespace):
+        logs_started.wait(timeout=2)
+        return f"logs for {pod_name}"
+
+    monkeypatch.setattr(incident_service, "get_all_pods", list_pods)
+    monkeypatch.setattr(incident_service, "get_namespace_events", list_events)
+    monkeypatch.setattr(incident_service, "get_pod_logs", read_logs)
+
+    incidents = incident_service.generate_incident_summary("production")
+
+    assert [incident["pod"] for incident in incidents] == ["pod-1", "pod-2"]
+    assert incidents[0]["reasons"] == ["BackOff"]
+    assert incidents[1]["reasons"] == ["OOMKilled"]
+    assert incidents[0]["logs"] == "logs for pod-1"
+    assert incidents[1]["logs"] == "logs for pod-2"
+
+
+def test_missing_groq_key_is_reported_as_configuration_error():
+    classified = _classify_provider_error(
+        RuntimeError("GROQ_API_KEY is not configured")
+    )
+
+    assert classified["code"] == "AI_PROVIDER_NOT_CONFIGURED"
+    assert "Set GROQ_API_KEY" in classified["message"]
+
+
+def test_kubernetes_client_is_initialized_once(monkeypatch):
+    initialized = []
+    loaded_incluster = []
+    loaded_kubeconfig = []
+    core_api = object()
+
+    def load_incluster():
+        loaded_incluster.append(True)
+        raise ConfigException("not running in a cluster")
+
+    monkeypatch.setattr(kubernetes_service, "_core_v1_api", None)
+    monkeypatch.setattr(kubernetes_service.config, "load_incluster_config", load_incluster)
+    monkeypatch.setattr(
+        kubernetes_service.config,
+        "load_kube_config",
+        lambda: loaded_kubeconfig.append(True),
+    )
+    monkeypatch.setattr(
+        kubernetes_service.client,
+        "CoreV1Api",
+        lambda: initialized.append(True) or core_api,
+    )
+
+    first = kubernetes_service.get_k8s_client()
+    second = kubernetes_service.get_k8s_client()
+
+    assert first is core_api
+    assert second is core_api
+    assert len(loaded_incluster) == 1
+    assert len(loaded_kubeconfig) == 1
+    assert len(initialized) == 1
 
 
 def test_analyzed_incidents_use_configured_namespace_and_summary_shape(monkeypatch):
@@ -182,6 +287,65 @@ def test_backend_health_is_public_but_api_requires_authentication():
     assert client.get("/dashboard").status_code == 401
 
 
+def test_public_demo_status_is_read_only_and_does_not_require_auth(monkeypatch):
+    demo_data = {
+        "namespace": "ai-devops",
+        "deployments": [
+            {
+                "name": "demo-app",
+                "ready_replicas": 1,
+                "desired_replicas": 1,
+                "available_replicas": 1,
+            }
+        ],
+        "pods": [
+            {
+                "name": "demo-app-abc",
+                "status": "Running",
+                "ready": True,
+                "reason": None,
+            }
+        ],
+    }
+    monkeypatch.setattr(demo_route, "get_demo_status", lambda: demo_data)
+
+    client = TestClient(app)
+
+    response = client.get("/demo/status")
+
+    assert response.status_code == 200
+    assert response.json() == demo_data
+    assert client.get("/dashboard").status_code == 401
+
+
+def test_public_demo_pod_summary_only_exposes_safe_status_fields():
+    pod = SimpleNamespace(
+        metadata=SimpleNamespace(name="crash-demo"),
+        status=SimpleNamespace(
+            phase="Running",
+            container_statuses=[
+                SimpleNamespace(
+                    ready=False,
+                    state=SimpleNamespace(
+                        waiting=SimpleNamespace(
+                            reason="CrashLoopBackOff",
+                            message="private container output",
+                        ),
+                        terminated=None,
+                    ),
+                )
+            ],
+        ),
+    )
+
+    summary = demo_service._pod_summary(pod)
+
+    assert summary == {
+        "name": "crash-demo",
+        "status": "Running",
+        "ready": False,
+        "reason": "CrashLoopBackOff",
+    }
 def test_cognito_access_token_requires_assigned_group(monkeypatch):
     monkeypatch.setenv("COGNITO_ISSUER", "https://cognito.example.test/pool")
     monkeypatch.setenv("COGNITO_CLIENT_ID", "client-id")

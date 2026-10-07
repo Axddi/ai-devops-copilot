@@ -10,6 +10,7 @@ from routes.chat import router as chat_router
 from routes.prometheus import router as prometheus_router
 from routes.logs import router as logs_router
 from routes.dashboard import router as dashboard_router
+from routes.demo import router as demo_router
 
 load_dotenv()
 
@@ -26,6 +27,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(demo_router)
 protected = [Depends(require_authenticated_user)]
 app.include_router(ai_router, dependencies=protected)
 app.include_router(chat_router, dependencies=protected)
