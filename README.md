@@ -20,8 +20,7 @@ workflow.
 
 The showcase currently uses an AWS-provided load-balancer hostname over HTTP;
 it does not require a custom domain, but the internet-facing load balancer
-incurs ongoing AWS charges. See [the EKS deployment guide](./kubernetes/README.md)
-for details and instructions to remove the public endpoint.
+incurs ongoing AWS charges.
 
 **Demo Video**
 
