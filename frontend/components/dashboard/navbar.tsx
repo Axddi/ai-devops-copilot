@@ -1,10 +1,10 @@
 'use client';
 
-import { useSession, signIn, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { MessageSquare } from "lucide-react";
-import { Menu, Search, Bell, Settings } from 'lucide-react';
+import { Menu, Search, Bell } from 'lucide-react';
 import { logout } from "@/lib/logout";
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
@@ -17,9 +17,10 @@ import {
 
 interface NavbarProps {
   onMenuToggle: () => void;
+  onOpenAlerts: () => void;
 }
 
-export function Navbar({ onMenuToggle }: NavbarProps) {
+export function Navbar({ onMenuToggle, onOpenAlerts }: NavbarProps) {
   const { data: session } = useSession();
   return (
     <div className="border-b border-border bg-card h-16 px-6 flex items-center justify-between sticky top-0 z-50">
@@ -52,36 +53,20 @@ export function Navbar({ onMenuToggle }: NavbarProps) {
       </div>
 
       <div className="flex items-center gap-4">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-2">
-              <span className="text-xs">production-us-east-1</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem>production-us-east-1</DropdownMenuItem>
-            <DropdownMenuItem>staging-us-west-2</DropdownMenuItem>
-            <DropdownMenuItem>dev-eu-west-1</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
         <Link href="/chat">
-          <Button variant="ghost" size="icon">
+          <Button variant="ghost" size="icon" aria-label="Open AI assistant">
             <MessageSquare className="h-5 w-5" />
           </Button>
         </Link>
 
-        <div className="px-3 py-1 rounded-full bg-secondary border border-border text-xs font-medium">
-          Groq · Llama 3.3 70B
-        </div>
-
-        <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground relative">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground hover:text-foreground"
+          aria-label="View cluster alerts"
+          onClick={onOpenAlerts}
+        >
           <Bell className="w-5 h-5" />
-          <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
-        </Button>
-
-        <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
-          <Settings className="w-5 h-5" />
         </Button>
 
 <DropdownMenu>
@@ -105,6 +90,10 @@ export function Navbar({ onMenuToggle }: NavbarProps) {
                     {session.user?.email}
                 </DropdownMenuItem>
 
+                <DropdownMenuItem disabled>
+                    Role: {session.user?.role ?? "Unassigned"}
+                </DropdownMenuItem>
+
                 <DropdownMenuItem
                     onClick={logout}
                 >
@@ -112,11 +101,7 @@ export function Navbar({ onMenuToggle }: NavbarProps) {
                 </DropdownMenuItem>
             </>
         ) : (
-            <DropdownMenuItem
-                onClick={() => signIn("cognito")}
-            >
-                Login
-            </DropdownMenuItem>
+            <DropdownMenuItem disabled>Authentication required</DropdownMenuItem>
         )}
 
     </DropdownMenuContent>

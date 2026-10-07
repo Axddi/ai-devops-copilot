@@ -12,7 +12,10 @@ export function DashboardLayout() {
   return (
     <div className="h-screen flex flex-col bg-background text-foreground">
       {/* Navbar */}
-      <Navbar onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
+      <Navbar
+        onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
+        onOpenAlerts={() => setActiveSection('alerts')}
+      />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}

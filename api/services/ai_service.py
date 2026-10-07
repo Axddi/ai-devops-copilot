@@ -1,15 +1,17 @@
 import os
 import json
+import logging
 
 from dotenv import load_dotenv
 from groq import Groq
 
+logger = logging.getLogger(__name__)
+
 load_dotenv()
-print("Groq Key Loaded:", bool(os.getenv("GROQ_API_KEY")))
 
 PROVIDER = os.getenv(
     "GROQ_MODEL",
-    "llama-3.3-70b-versatile"
+    "openai/gpt-oss-20b"
 )
 
 client = None
@@ -52,6 +54,12 @@ def _provider_error(code, message):
 def _classify_provider_error(error):
     text = str(error).lower()
 
+    if "not configured" in text or "missing" in text:
+        return _provider_error(
+            "AI_PROVIDER_NOT_CONFIGURED",
+            "AI provider is not configured. Set GROQ_API_KEY to enable AI analysis; showing Kubernetes-derived fallback analysis."
+        )
+
     if (
         "429" in text
         or "quota" in text
@@ -84,6 +92,10 @@ def _fallback_analysis(incident, namespace="ai-devops", error=None):
     pod = incident.get("pod", "unknown-pod")
     reasons = _as_string_list(incident.get("reasons"))
     messages = _as_string_list(incident.get("messages"))
+    if isinstance(incident.get("reason"), str) and incident["reason"] not in reasons:
+        reasons.append(incident["reason"])
+    if isinstance(incident.get("message"), str) and incident["message"] not in messages:
+        messages.append(incident["message"])
     logs = incident.get("logs") if isinstance(incident.get("logs"), str) else ""
 
     reason_text = ", ".join(reasons) if reasons else "Kubernetes warning"
@@ -239,9 +251,18 @@ Return format:
             ]
         )
 
-        text = response.choices[0].message.content.strip()
+        content = response.choices[0].message.content
+        if not isinstance(content, str) or not content.strip():
+            return _fallback_analysis(
+                incident,
+                namespace,
+                _provider_error(
+                    "AI_INVALID_RESPONSE",
+                    "AI provider returned an empty response."
+                )
+            )
 
-        parsed = json.loads(text)
+        parsed = json.loads(content)
 
         if not isinstance(parsed, dict):
             return _fallback_analysis(
@@ -256,11 +277,7 @@ Return format:
         return _normalize_success(parsed)
 
     except Exception as e:
-        print("\n========== GROQ ERROR ==========")
-        print(type(e))
-        print(repr(e))
-        print(str(e))
-        print("================================\n")
+        logger.exception("Incident analysis failed")
 
         return _fallback_analysis(
             incident,

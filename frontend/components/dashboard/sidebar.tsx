@@ -4,13 +4,13 @@ import React from 'react';
 import {
   LayoutDashboard,
   AlertCircle,
-  Package,
   FileText,
   BarChart3,
   Sparkles,
   Bell,
   Settings,
   Database,
+  History,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -22,6 +22,7 @@ interface SidebarProps {
 const sections = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'incidents', label: 'Incidents', icon: AlertCircle },
+  { id: 'history', label: 'History', icon: History },
   { id: 'kubernetes', label: 'Kubernetes', icon: Database },
   { id: 'logs', label: 'Logs', icon: FileText },
   { id: 'metrics', label: 'Metrics', icon: BarChart3 },

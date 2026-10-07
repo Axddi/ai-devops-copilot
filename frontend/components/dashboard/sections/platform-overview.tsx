@@ -85,15 +85,18 @@ export function PlatformOverview() {
   const events = dashboard?.events ?? [];
   const incidents = dashboard?.incidents ?? [];
   const totalPods = dashboard?.summary.pod_count ?? pods.length;
-  const namespacePods = pods.filter((pod) => pod.namespace === 'ai-devops').length;
-  const failedPods = pods.filter((pod) => pod.namespace === 'ai-devops' && !['Running', 'Succeeded'].includes(pod.status)).length;
-  const runningPodsFromPods = Math.max(0, namespacePods - failedPods);
+  const failedPods = dashboard?.summary.unhealthy_pods ?? 0;
+  const runningPodsFromPods = pods.filter(
+    (pod) => pod.status === 'Running' && pod.ready
+  ).length;
   const runningPodsFromPrometheus = dashboard ? getPrometheusScalar(dashboard.metrics.running) : 0;
-  const runningPods = runningPodsFromPods || runningPodsFromPrometheus;
+  const runningPods = pods.length > 0 ? runningPodsFromPods : runningPodsFromPrometheus;
   const cpuUsage = dashboard ? getPrometheusAverage(dashboard.metrics.cpu) : 0;
   const memoryUsage = dashboard ? getPrometheusAverage(dashboard.metrics.memory) : 0;
+  const cpuAvailable = dashboard?.metrics.cpu.status === 'success' && dashboard.metrics.cpu.data.result.length > 0;
+  const memoryAvailable = dashboard?.metrics.memory.status === 'success' && dashboard.metrics.memory.data.result.length > 0;
   const warningEvents = events.filter((event) => event.type.toLowerCase() === 'warning').length;
-  const clusterHealth = totalPods === 0 ? 100 : Math.round((runningPods / totalPods) * 100);
+  const clusterHealth = totalPods === 0 ? 0 : Math.round((runningPods / totalPods) * 100);
 
   const metrics: Metric[] = [
     {
@@ -114,22 +117,22 @@ export function PlatformOverview() {
       title: 'Running Pods',
       value: runningPods.toLocaleString(),
       unit: `${totalPods.toLocaleString()} total cluster pods`,
-      status: failedPods === 0 ? 'healthy' : 'warning',
+      status: totalPods === 0 ? 'info' : failedPods === 0 ? 'healthy' : 'warning',
       progress: totalPods === 0 ? 0 : Math.round((runningPods / totalPods) * 100),
     },
     {
       title: 'CPU',
-      value: `${cpuUsage.toFixed(1)}%`,
-      unit: dashboard?.metrics.cpu.status === 'success' ? 'average node usage' : 'metric unavailable',
-      status: cpuUsage < 70 ? 'healthy' : cpuUsage < 90 ? 'warning' : 'critical',
-      progress: Math.round(cpuUsage),
+      value: cpuAvailable ? `${cpuUsage.toFixed(1)}%` : 'N/A',
+      unit: cpuAvailable ? 'average node usage' : 'metric unavailable',
+      status: cpuAvailable ? (cpuUsage < 70 ? 'healthy' : cpuUsage < 90 ? 'warning' : 'critical') : 'info',
+      progress: cpuAvailable ? Math.round(cpuUsage) : 0,
     },
     {
       title: 'Memory',
-      value: `${memoryUsage.toFixed(1)}%`,
-      unit: dashboard?.metrics.memory.status === 'success' ? 'average node usage' : 'metric unavailable',
-      status: memoryUsage < 70 ? 'healthy' : memoryUsage < 90 ? 'warning' : 'critical',
-      progress: Math.round(memoryUsage),
+      value: memoryAvailable ? `${memoryUsage.toFixed(1)}%` : 'N/A',
+      unit: memoryAvailable ? 'average node usage' : 'metric unavailable',
+      status: memoryAvailable ? (memoryUsage < 70 ? 'healthy' : memoryUsage < 90 ? 'warning' : 'critical') : 'info',
+      progress: memoryAvailable ? Math.round(memoryUsage) : 0,
     },
     {
       title: 'Warning Events',

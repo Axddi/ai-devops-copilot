@@ -6,6 +6,7 @@ metadata:
 
 spec:
   replicas: 1
+  revisionHistoryLimit: 2
 
   selector:
     matchLabels:
@@ -17,34 +18,44 @@ spec:
         app: ai-devops-api
 
     spec:
+      serviceAccountName: ai-devops-api
+      automountServiceAccountToken: true
       containers:
         - name: api
 
-          image: 122610523913.dkr.ecr.ap-south-1.amazonaws.com/ai-devops-api:latest
+          image: 122610523913.dkr.ecr.ap-south-1.amazonaws.com/ai-devops-api:demo-20261008-public-demo-v2
 
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
 
           ports:
             - containerPort: 8000
 
           env:
-            - name: GEMINI_API_KEY
+            - name: GROQ_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: ai-devops-secrets
-                  key: GEMINI_API_KEY
+                  key: GROQ_API_KEY
+                  optional: true
+            - name: GROQ_MODEL
+              value: openai/gpt-oss-20b
+            - name: COGNITO_ISSUER
+              value: https://cognito-idp.ap-south-1.amazonaws.com/ap-south-1_A6sKQ52Wj
+            - name: COGNITO_CLIENT_ID
+              value: 7j18lkj091ptj4ivke9t7d8c3a
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ai-devops-db-secrets
+                  key: DATABASE_URL
+            - name: MYSQL_SSL_CA
+              value: /etc/ssl/certs/rds-ca-bundle.pem
             - name: DASHBOARD_NAMESPACE
               value: ai-devops
             - name: DASHBOARD_CACHE_TTL_SECONDS
               value: "15"
             - name: DASHBOARD_TIMEOUT_SECONDS
               value: "4"
-            - name: REDIS_HOST
-              value: redis-master.redis.svc.cluster.local
-            - name: REDIS_PORT
-              value: "6379"
-            - name: REDIS_SOCKET_TIMEOUT_SECONDS
-              value: "1"
             - name: PROMETHEUS_URL
               value: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
             - name: PROMETHEUS_TIMEOUT_SECONDS
@@ -52,11 +63,30 @@ spec:
             - name: KUBERNETES_REQUEST_TIMEOUT_SECONDS
               value: "3"
 
+          startupProbe:
+            httpGet:
+              path: /
+              port: 8000
+            periodSeconds: 5
+            failureThreshold: 12
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            periodSeconds: 20
+
           resources:
             requests:
               cpu: "100m"
-              memory: "256Mi"
+              memory: "192Mi"
 
             limits:
               cpu: "500m"
-              memory: "512Mi"
+              memory: "384Mi"

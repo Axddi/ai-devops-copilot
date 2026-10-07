@@ -14,9 +14,10 @@ export default function ChatInput({
   const [text, setText] = useState("");
 
   function handleSend() {
-    if (!text.trim()) return;
+    const message = text.trim();
+    if (!message || loading) return;
 
-    onSend(text);
+    onSend(message);
     setText("");
   }
 
@@ -26,9 +27,13 @@ export default function ChatInput({
         className="flex-1 rounded-lg border bg-zinc-900 p-3 text-white"
         placeholder="Ask your DevOps AI..."
         value={text}
+        disabled={loading}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") handleSend();
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            handleSend();
+          }
         }}
       />
 

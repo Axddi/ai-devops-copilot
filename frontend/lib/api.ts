@@ -1,3 +1,6 @@
+import type { ChatRequest, ChatResponse } from '@/types/chat';
+import { getSession } from 'next-auth/react';
+
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api/backend').replace(/\/$/, '');
 const AI_ANALYSIS_CACHE_MS = 60000;
 const DASHBOARD_CACHE_MS = 5000;
@@ -7,6 +10,17 @@ let analyzedIncidentsCache: { data: AnalyzedIncident[]; fetchedAt: number } | nu
 let analyzedIncidentsRequest: Promise<AnalyzedIncident[]> | null = null;
 let dashboardCache: { data: DashboardResponse; fetchedAt: number } | null = null;
 let dashboardRequest: Promise<DashboardResponse> | null = null;
+
+async function getAccessToken() {
+  const session = await getSession();
+  if (session?.authError === 'RefreshTokenError') {
+    throw new Error('Your sign-in expired. Please sign in again to continue.');
+  }
+  if (!session?.accessToken) {
+    throw new Error('Authentication required. Sign in with an assigned Cognito role.');
+  }
+  return session.accessToken;
+}
 
 export interface Incident {
   pod: string;
@@ -37,6 +51,19 @@ export interface AnalyzedIncident {
   incident: Incident;
   ai_analysis: AIAnalysis;
   provider: string;
+}
+
+export interface IncidentHistoryEntry {
+  id: number;
+  namespace: string;
+  pod: string;
+  severity: string;
+  reasons: string[];
+  messages: string[];
+  logs: string;
+  analysis: AIAnalysis;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Pod {
@@ -90,6 +117,8 @@ export interface DashboardMetrics {
 export interface DashboardSummary {
   healthy: boolean;
   pod_count: number;
+  healthy_pods: number;
+  unhealthy_pods: number;
   incident_count: number;
 }
 
@@ -102,6 +131,7 @@ export interface DashboardResponse {
 }
 
 async function request<T>(path: string): Promise<T> {
+  const accessToken = await getAccessToken();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -110,11 +140,12 @@ async function request<T>(path: string): Promise<T> {
   try {
     res = await fetch(`${API_BASE}${path}`, {
       cache: 'no-store',
+      headers: { Authorization: `Bearer ${accessToken}` },
       signal: controller.signal,
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error(`Backend request timed out: ${path}`);
+      throw new Error(`Backend request timed out: ${path}`, { cause: error });
     }
 
     throw error;
@@ -128,6 +159,48 @@ async function request<T>(path: string): Promise<T> {
   }
 
   return res.json();
+}
+
+export async function sendChatMessage(payload: ChatRequest): Promise<ChatResponse> {
+  const accessToken = await getAccessToken();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/chat`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('Chat request timed out. Please try again.', { cause: error });
+    }
+    throw new Error('Unable to connect to the AI backend.', { cause: error });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const data: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail =
+      isRecord(data) && typeof data.detail === 'string'
+        ? data.detail
+        : `Chat request failed (${response.status}).`;
+    throw new Error(detail);
+  }
+
+  if (!isRecord(data) || typeof data.response !== 'string' || !data.response.trim()) {
+    throw new Error('The AI backend returned an invalid response.');
+  }
+
+  return { response: data.response };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -269,6 +342,20 @@ function normalizeDashboard(value: unknown): DashboardResponse {
   const pods = Array.isArray(dashboard.pods) ? dashboard.pods.map(normalizePod) : [];
   const events = Array.isArray(dashboard.events) ? dashboard.events.map(normalizeEvent) : [];
   const incidents = Array.isArray(dashboard.incidents) ? dashboard.incidents.map(normalizeIncident) : [];
+  const unhealthyReasons = new Set([
+    'CrashLoopBackOff',
+    'ImagePullBackOff',
+    'ErrImagePull',
+    'CreateContainerConfigError',
+    'CreateContainerError',
+    'RunContainerError',
+    'Error',
+  ]);
+  const healthyPods = pods.filter(
+    (pod) =>
+      pod.status === 'Succeeded' ||
+      (pod.ready && !unhealthyReasons.has(pod.reason))
+  ).length;
 
   return {
     pods,
@@ -281,8 +368,10 @@ function normalizeDashboard(value: unknown): DashboardResponse {
       restarts: normalizePrometheusMetric(metrics.restarts),
     },
     summary: {
-      healthy: booleanValue(summary.healthy, incidents.length === 0),
+      healthy: booleanValue(summary.healthy, pods.length > 0 && healthyPods === pods.length),
       pod_count: numberValue(summary.pod_count, pods.length),
+      healthy_pods: numberValue(summary.healthy_pods, healthyPods),
+      unhealthy_pods: numberValue(summary.unhealthy_pods, pods.length - healthyPods),
       incident_count: numberValue(summary.incident_count, incidents.length),
     },
   };
@@ -298,8 +387,12 @@ function normalizeAnalyzedIncident(value: unknown): AnalyzedIncident {
       pod: stringValue(data.pod, "unknown-pod"),
       namespace: stringValue(data.namespace, "default"),
       severity: analysis.severity || "unknown",
-      reasons: [stringValue(data.reason)],
-      messages: [stringValue(data.message)],
+      reasons: stringArray(data.reasons).length > 0
+        ? stringArray(data.reasons)
+        : [stringValue(data.reason)].filter(Boolean),
+      messages: stringArray(data.messages).length > 0
+        ? stringArray(data.messages)
+        : [stringValue(data.message)].filter(Boolean),
       logs: stringValue(data.logs),
     },
 
@@ -446,6 +539,26 @@ export async function getIncidents() {
   return getAnalyzedIncidents();
 }
 
+export async function getIncidentHistory(limit = 50): Promise<IncidentHistoryEntry[]> {
+  const response = await request<unknown>(`/history?limit=${limit}`);
+  if (!Array.isArray(response)) {
+    throw new Error('The backend returned invalid incident history.');
+  }
+
+  return response.filter(isRecord).map((entry) => ({
+    id: numberValue(entry.id),
+    namespace: stringValue(entry.namespace, 'default'),
+    pod: stringValue(entry.pod, 'unknown-pod'),
+    severity: stringValue(entry.severity, 'unknown'),
+    reasons: stringArray(entry.reasons),
+    messages: stringArray(entry.messages),
+    logs: stringValue(entry.logs),
+    analysis: normalizeAnalysis(entry.analysis),
+    created_at: stringValue(entry.created_at),
+    updated_at: stringValue(entry.updated_at),
+  }));
+}
+
 export async function getPods() {
   const dashboard = await getDashboard();
   return dashboard.pods;
@@ -456,7 +569,7 @@ export async function getPodMetrics(namespace = 'ai-devops') {
   return metricsFromDashboard(dashboard, namespace);
 }
 
-export async function getEvents(namespace = 'ai-devops') {
+export async function getEvents() {
   const dashboard = await getDashboard();
   return dashboard.events;
 }
