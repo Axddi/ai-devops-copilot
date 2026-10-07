@@ -1,6 +1,10 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
 from models.chat import ChatRequest, ChatResponse
 from services.ai_service import _get_client, PROVIDER
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/chat",
@@ -38,6 +42,13 @@ async def chat(request: ChatRequest):
                     "role": "system",
                     "content": SYSTEM_PROMPT,
                 },
+                *[
+                    {
+                        "role": turn.role,
+                        "content": turn.content,
+                    }
+                    for turn in request.history
+                ],
                 {
                     "role": "user",
                     "content": request.message,
@@ -46,17 +57,23 @@ async def chat(request: ChatRequest):
             temperature=0.3,
         )
 
+        answer = response.choices[0].message.content
+        if not answer or not answer.strip():
+            raise HTTPException(
+                status_code=502,
+                detail="AI provider returned an empty response.",
+            )
+
         return ChatResponse(
-            response=response.choices[0].message.content
+            response=answer.strip()
         )
 
-    except Exception as e:
-        print("\n========== CHAT ERROR ==========")
-        print(type(e))
-        print(e)
-        print("================================\n")
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Chat completion failed")
 
         raise HTTPException(
-            status_code=500,
-            detail=str(e)
+            status_code=502,
+            detail="AI provider is unavailable.",
         )

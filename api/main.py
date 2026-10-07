@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from services.auth_service import require_authenticated_user
 from routes.pods import router as pods_router
 from routes.events import router as events_router
 from routes.ai import router as ai_router
@@ -25,14 +26,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.include_router(ai_router)
-app.include_router(chat_router)
-app.include_router(incidents_router)
-app.include_router(dashboard_router)
-app.include_router(pods_router)
-app.include_router(events_router)
-app.include_router(logs_router)
-app.include_router(prometheus_router)
+protected = [Depends(require_authenticated_user)]
+app.include_router(ai_router, dependencies=protected)
+app.include_router(chat_router, dependencies=protected)
+app.include_router(incidents_router, dependencies=protected)
+app.include_router(dashboard_router, dependencies=protected)
+app.include_router(pods_router, dependencies=protected)
+app.include_router(events_router, dependencies=protected)
+app.include_router(logs_router, dependencies=protected)
+app.include_router(prometheus_router, dependencies=protected)
 
 @app.get("/")
 async def root():

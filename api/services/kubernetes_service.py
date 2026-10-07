@@ -37,7 +37,7 @@ def get_all_pods():
 
     for pod in pods.items:
 
-        ready = True
+        ready = pod.status.phase == "Running"
         reason = pod.status.phase
 
         if pod.status.container_statuses:
@@ -48,10 +48,10 @@ def get_all_pods():
 
                 if container.state:
 
-                    if container.state.waiting:
+                    if not container.ready and container.state.waiting:
                         reason = container.state.waiting.reason
 
-                    elif container.state.terminated:
+                    elif not container.ready and container.state.terminated:
                         reason = container.state.terminated.reason
 
         result.append(
@@ -79,17 +79,20 @@ def get_pod_metrics(namespace="ai-devops"):
         p
         for p in namespace_pods
         if (
-            not p["ready"]
-            or p["reason"]
-            in [
-                "CrashLoopBackOff",
-                "ImagePullBackOff",
-                "ErrImagePull",
-                "CreateContainerConfigError",
-                "CreateContainerError",
-                "RunContainerError",
-                "Error",
-            ]
+            p["status"] != "Succeeded"
+            and (
+                not p["ready"]
+                or p["reason"]
+                in [
+                    "CrashLoopBackOff",
+                    "ImagePullBackOff",
+                    "ErrImagePull",
+                    "CreateContainerConfigError",
+                    "CreateContainerError",
+                    "RunContainerError",
+                    "Error",
+                ]
+            )
         )
     ]
 

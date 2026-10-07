@@ -7,6 +7,7 @@ import { RootCausePanel } from './sections/root-cause-panel';
 import { KubernetesHealth } from './sections/kubernetes-health';
 import { Observability } from './sections/observability';
 import { AIComparison } from './sections/ai-comparison';
+import { IncidentHistory } from './sections/incident-history';
 
 interface ContentProps {
   activeSection: string;
@@ -22,6 +23,8 @@ export function DashboardContent({ activeSection }: ContentProps) {
             <RootCausePanel />
           </div>
         );
+      case 'history':
+        return <IncidentHistory />;
       case 'kubernetes':
         return <KubernetesHealth />;
       case 'logs':
@@ -38,12 +41,7 @@ export function DashboardContent({ activeSection }: ContentProps) {
           </div>
         );
       case 'alerts':
-        return (
-          <div className="p-6">
-            <h1 className="text-2xl font-bold mb-4">Alerts</h1>
-            <p className="text-muted-foreground">Alert rules configuration coming soon.</p>
-          </div>
-        );
+        return <Observability defaultTab="events" />;
       case 'overview':
       default:
         return (

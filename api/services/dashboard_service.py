@@ -1,4 +1,5 @@
 import os
+import logging
 from concurrent.futures import ThreadPoolExecutor, wait
 
 from services.kubernetes_service import (
@@ -22,6 +23,8 @@ from services.redis_service import (
     set_cache,
 )
 
+logger = logging.getLogger(__name__)
+
 DASHBOARD_NAMESPACE = os.getenv("DASHBOARD_NAMESPACE", "ai-devops")
 DASHBOARD_CACHE_TTL_SECONDS = int(os.getenv("DASHBOARD_CACHE_TTL_SECONDS", "15"))
 DASHBOARD_TIMEOUT_SECONDS = float(os.getenv("DASHBOARD_TIMEOUT_SECONDS", "4"))
@@ -42,7 +45,8 @@ def cluster_summary(data):
     unhealthy = [
         pod
         for pod in data["pods"]
-        if (
+        if pod.get("status") != "Succeeded"
+        and (
             not pod.get("ready", False)
             or pod.get("reason")
             in [
@@ -60,21 +64,23 @@ def cluster_summary(data):
     healthy = len(data["pods"]) - len(unhealthy)
 
     return {
-        "healthy": len(unhealthy) == 0,
+        "healthy": bool(data["pods"]) and len(unhealthy) == 0,
         "healthy_pods": healthy,
         "unhealthy_pods": len(unhealthy),
         "pod_count": len(data["pods"]),
         "incident_count": len(data["incidents"]),
     }
 
-def resolve_future(future, fallback):
+def resolve_future(name, future, fallback):
     if not future.done():
         future.cancel()
+        logger.warning("Dashboard data source %s exceeded the collection timeout", name)
         return fallback
 
     try:
         return future.result()
     except Exception:
+        logger.exception("Dashboard data source %s failed", name)
         return fallback
 
 
@@ -99,18 +105,18 @@ def build_dashboard():
     wait(futures.values(), timeout=DASHBOARD_TIMEOUT_SECONDS)
 
     dashboard = {
-        "pods": resolve_future(futures["pods"], []),
-        "events": resolve_future(futures["events"], []),
-        "incidents": resolve_future(futures["incidents"], []),
+        "pods": resolve_future("pods", futures["pods"], []),
+        "events": resolve_future("events", futures["events"], []),
+        "incidents": resolve_future("incidents", futures["incidents"], []),
         "metrics": {
-            "cpu": resolve_future(futures["cpu"], EMPTY_METRIC),
-            "memory": resolve_future(futures["memory"], EMPTY_METRIC),
-            "running": resolve_future(futures["running"], EMPTY_METRIC),
-            "restarts": resolve_future(futures["restarts"], EMPTY_METRIC),
+            "cpu": resolve_future("cpu", futures["cpu"], EMPTY_METRIC),
+            "memory": resolve_future("memory", futures["memory"], EMPTY_METRIC),
+            "running": resolve_future("running", futures["running"], EMPTY_METRIC),
+            "restarts": resolve_future("restarts", futures["restarts"], EMPTY_METRIC),
         },
     }
 
-    executor.shutdown(wait=True, cancel_futures=True)
+    executor.shutdown(wait=False, cancel_futures=True)
 
     dashboard["summary"] = cluster_summary(dashboard)
 

@@ -51,9 +51,8 @@ export function KubernetesHealth() {
     () =>
       pods.filter(
         (pod) =>
-          pod.ready &&
-          pod.status.toLowerCase() === 'running' &&
-          pod.reason === 'Running'
+          pod.status === 'Succeeded' ||
+          (pod.ready && pod.status.toLowerCase() === 'running' && pod.reason === 'Running')
       ),
     [pods]
   );
@@ -62,6 +61,7 @@ export function KubernetesHealth() {
     () =>
       pods.filter(
         (pod) =>
+          pod.status !== 'Succeeded' &&
           !(
             pod.ready &&
             pod.status.toLowerCase() === 'running' &&
@@ -94,9 +94,10 @@ export function KubernetesHealth() {
       current.pods++;
 
       const isHealthy =
-        pod.ready &&
-        pod.status.toLowerCase() === 'running' &&
-        pod.reason === 'Running';
+        pod.status === 'Succeeded' ||
+        (pod.ready &&
+          pod.status.toLowerCase() === 'running' &&
+          pod.reason === 'Running');
 
       if (isHealthy) {
         current.healthy++;
@@ -113,14 +114,16 @@ export function KubernetesHealth() {
   }, [pods]);
 
   const totalPods =
-    dashboard?.summary.pod_count || Math.max(pods.length, prometheusRunningPods);
+    dashboard?.summary.pod_count ?? Math.max(pods.length, prometheusRunningPods);
 
   const runningPods =
-    pods.length > 0 ? healthyPods.length : prometheusRunningPods;
+    pods.length > 0
+      ? pods.filter((pod) => pod.ready && pod.status.toLowerCase() === 'running').length
+      : prometheusRunningPods;
 
   const warningPods =
     pods.length > 0
-      ? unhealthyPods.length
+      ? dashboard?.summary.unhealthy_pods ?? unhealthyPods.length
       : Math.max(0, totalPods - prometheusRunningPods);
 
   const warningEvents = events.filter(
@@ -134,7 +137,7 @@ export function KubernetesHealth() {
       icon: Package,
       label: 'Pods',
       total: totalPods,
-      healthy: runningPods,
+      healthy: dashboard?.summary.healthy_pods ?? healthyPods.length,
       warning: warningPods,
     },
     {
@@ -187,7 +190,7 @@ export function KubernetesHealth() {
               const Icon = cluster.icon;
               const healthPercent =
                 cluster.total === 0
-                  ? 100
+                  ? cluster.label === 'Events' ? 100 : 0
                   : Math.round((cluster.healthy / cluster.total) * 100);
 
               return (

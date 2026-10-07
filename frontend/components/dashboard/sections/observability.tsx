@@ -2,11 +2,11 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
-import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getEvents, getIncidentSummary, getPods, type ClusterEvent, type Incident, type Pod } from '@/lib/api';
+import { getDashboard, type DashboardResponse, type Incident } from '@/lib/api';
 
 interface ObservabilityProps {
   defaultTab?: 'metrics' | 'logs' | 'events';
@@ -26,8 +26,7 @@ function getLevelColor(level: string) {
 }
 
 export function Observability({ defaultTab = 'metrics' }: ObservabilityProps) {
-  const [pods, setPods] = useState<Pod[]>([]);
-  const [events, setEvents] = useState<ClusterEvent[]>([]);
+  const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,16 +36,11 @@ export function Observability({ defaultTab = 'metrics' }: ObservabilityProps) {
 
     async function loadObservability() {
       try {
-        const [podsData, eventsData, incidentsData] = await Promise.all([
-          getPods(),
-          getEvents(),
-          getIncidentSummary(),
-        ]);
+        const dashboardData = await getDashboard({ force: true });
 
         if (!cancelled) {
-          setPods(podsData);
-          setEvents(eventsData);
-          setIncidents(incidentsData);
+          setDashboard(dashboardData);
+          setIncidents(dashboardData.incidents);
           setError(null);
         }
       } catch (error) {
@@ -70,19 +64,30 @@ export function Observability({ defaultTab = 'metrics' }: ObservabilityProps) {
     };
   }, []);
 
-  const chartData = useMemo(() => {
-    const running = pods.filter((pod) => pod.status.toLowerCase() === 'running').length;
-    const nonRunning = pods.length - running;
-    const warnings = events.filter((event) => event.type.toLowerCase() === 'warning').length;
-    const labels = ['-60s', '-50s', '-40s', '-30s', '-20s', '-10s', 'now'];
+  const events = dashboard?.events ?? [];
+  const metricData = useMemo(() => {
+    if (!dashboard) return [];
 
-    return labels.map((time) => ({
-      time,
-      running,
-      nonRunning,
-      warnings,
-    }));
-  }, [events, pods]);
+    const byNode = new Map<string, { node: string; cpu: number | null; memory: number | null }>();
+
+    function addMetric(metric: DashboardResponse['metrics']['cpu'], key: 'cpu' | 'memory') {
+      metric.data.result.forEach((sample, index) => {
+        const node = sample.metric.instance || sample.metric.node || `${key} ${index + 1}`;
+        const value = Number.parseFloat(sample.value[1]);
+        if (!Number.isFinite(value)) return;
+
+        const row = byNode.get(node) ?? { node, cpu: null, memory: null };
+        row[key] = value;
+        byNode.set(node, row);
+      });
+    }
+
+    addMetric(dashboard.metrics.cpu, 'cpu');
+    addMetric(dashboard.metrics.memory, 'memory');
+    return [...byNode.values()].sort((left, right) => left.node.localeCompare(right.node));
+  }, [dashboard]);
+  const runningPods = dashboard?.metrics.running.data.result[0]?.value[1] ?? 'Unavailable';
+  const warningCount = events.filter((event) => event.type.toLowerCase() === 'warning').length;
 
   const logRows = incidents
     .filter((item) => item.logs)
@@ -96,8 +101,12 @@ export function Observability({ defaultTab = 'metrics' }: ObservabilityProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Observability</h1>
-        <p className="text-muted-foreground text-sm mt-1">Logs, metrics, and events across the platform</p>
+        <h1 className="text-3xl font-bold">{defaultTab === 'events' ? 'Cluster Alerts' : 'Observability'}</h1>
+        <p className="text-muted-foreground text-sm mt-1">
+          {defaultTab === 'events'
+            ? 'Live Kubernetes warning and cluster events'
+            : 'Logs, metrics, and events across the platform'}
+        </p>
       </div>
 
       {loading ? (
@@ -123,65 +132,64 @@ export function Observability({ defaultTab = 'metrics' }: ObservabilityProps) {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <Card className="border-border bg-card">
                 <CardHeader className="border-b border-border pb-4">
-                  <CardTitle className="text-sm">Running Pods</CardTitle>
+                  <CardTitle className="text-sm">CPU Usage by Node</CardTitle>
                 </CardHeader>
                 <CardContent className="pt-6">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={chartData}>
-                      <defs>
-                        <linearGradient id="colorRunning" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                      <XAxis dataKey="time" stroke="#71717a" style={{ fontSize: '12px' }} />
-                      <YAxis stroke="#71717a" style={{ fontSize: '12px' }} allowDecimals={false} />
-                      <Tooltip contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #27272a', borderRadius: '6px' }} />
-                      <Area type="monotone" dataKey="running" stroke="#22c55e" fillOpacity={1} fill="url(#colorRunning)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  {metricData.some((row) => row.cpu !== null) ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={metricData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+                        <XAxis dataKey="node" stroke="#71717a" style={{ fontSize: '12px' }} />
+                        <YAxis stroke="#71717a" unit="%" />
+                        <Tooltip contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #27272a', borderRadius: '6px' }} />
+                        <Bar dataKey="cpu" name="CPU" fill="#22c55e" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <p className="py-12 text-center text-sm text-muted-foreground">CPU metrics are unavailable.</p>
+                  )}
                 </CardContent>
               </Card>
 
               <Card className="border-border bg-card">
                 <CardHeader className="border-b border-border pb-4">
-                  <CardTitle className="text-sm">Non-Running Pods</CardTitle>
+                  <CardTitle className="text-sm">Memory Usage by Node</CardTitle>
                 </CardHeader>
                 <CardContent className="pt-6">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={chartData}>
-                      <defs>
-                        <linearGradient id="colorNonRunning" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                      <XAxis dataKey="time" stroke="#71717a" style={{ fontSize: '12px' }} />
-                      <YAxis stroke="#71717a" style={{ fontSize: '12px' }} allowDecimals={false} />
-                      <Tooltip contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #27272a', borderRadius: '6px' }} />
-                      <Area type="monotone" dataKey="nonRunning" stroke="#f97316" fillOpacity={1} fill="url(#colorNonRunning)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  {metricData.some((row) => row.memory !== null) ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={metricData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+                        <XAxis dataKey="node" stroke="#71717a" style={{ fontSize: '12px' }} />
+                        <YAxis stroke="#71717a" unit="%" />
+                        <Tooltip contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #27272a', borderRadius: '6px' }} />
+                        <Bar dataKey="memory" name="Memory" fill="#f97316" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <p className="py-12 text-center text-sm text-muted-foreground">Memory metrics are unavailable.</p>
+                  )}
                 </CardContent>
               </Card>
             </div>
 
             <Card className="border-border bg-card">
               <CardHeader className="border-b border-border pb-4">
-                <CardTitle className="text-sm">Warning Events</CardTitle>
+                <CardTitle className="text-sm">Current Cluster Signals</CardTitle>
               </CardHeader>
-              <CardContent className="pt-6">
-                <ResponsiveContainer width="100%" height={250}>
-                  <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                    <XAxis dataKey="time" stroke="#71717a" style={{ fontSize: '12px' }} />
-                    <YAxis stroke="#71717a" style={{ fontSize: '12px' }} allowDecimals={false} />
-                    <Tooltip contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #27272a', borderRadius: '6px' }} />
-                    <Line type="monotone" dataKey="warnings" stroke="#eab308" strokeWidth={2} dot={{ fill: '#eab308' }} />
-                  </LineChart>
-                </ResponsiveContainer>
+              <CardContent className="grid grid-cols-1 gap-4 p-6 sm:grid-cols-3">
+                <div>
+                  <p className="text-sm text-muted-foreground">Running pods (Prometheus)</p>
+                  <p className="mt-1 text-2xl font-semibold">{runningPods}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Warning events</p>
+                  <p className="mt-1 text-2xl font-semibold">{warningCount}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Active incidents</p>
+                  <p className="mt-1 text-2xl font-semibold">{incidents.length}</p>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

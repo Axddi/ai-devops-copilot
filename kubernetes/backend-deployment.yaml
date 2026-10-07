@@ -33,6 +33,11 @@ spec:
                 secretKeyRef:
                   name: ai-devops-secrets
                   key: GEMINI_API_KEY
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ai-devops-db-secrets
+                  key: DATABASE_URL
             - name: DASHBOARD_NAMESPACE
               value: ai-devops
             - name: DASHBOARD_CACHE_TTL_SECONDS
