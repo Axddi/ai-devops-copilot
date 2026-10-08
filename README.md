@@ -1,4 +1,4 @@
-﻿# AI DevOps Copilot
+# AI DevOps Copilot
 
 AI DevOps Copilot is an AI-powered Kubernetes incident response and cloud observability platform that helps DevOps and Site Reliability Engineering (SRE) teams detect, analyze, and troubleshoot infrastructure issues in real time.
 
@@ -225,6 +225,21 @@ cd frontend
 npm install
 
 npm run dev
+```
+
+---
+
+## Tests and Code Quality
+
+The API includes 17 automated pytest regression tests covering Cognito
+authentication, Kubernetes incident detection, incident-history persistence,
+chat validation, and public demo access controls.
+
+Run them from the repository root:
+
+```bash
+cd api
+python -m pytest test_regressions.py -v
 ```
 
 ---
