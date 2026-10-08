@@ -11,7 +11,7 @@ load_dotenv()
 
 PROVIDER = os.getenv(
     "GROQ_MODEL",
-    "llama-3.3-70b-versatile"
+    "openai/gpt-oss-20b"
 )
 
 client = None
@@ -53,6 +53,12 @@ def _provider_error(code, message):
 
 def _classify_provider_error(error):
     text = str(error).lower()
+
+    if "not configured" in text or "missing" in text:
+        return _provider_error(
+            "AI_PROVIDER_NOT_CONFIGURED",
+            "AI provider is not configured. Set GROQ_API_KEY to enable AI analysis; showing Kubernetes-derived fallback analysis."
+        )
 
     if (
         "429" in text

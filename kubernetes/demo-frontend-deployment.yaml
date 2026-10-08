@@ -1,44 +1,32 @@
 apiVersion: apps/v1
 kind: Deployment
-
 metadata:
-  name: ai-devops-frontend
+  name: ai-devops-public-demo
   namespace: ai-devops
-
 spec:
-
   replicas: 1
   revisionHistoryLimit: 2
-
   selector:
     matchLabels:
-      app: ai-devops-frontend
-
+      app: ai-devops-public-demo
   template:
-
     metadata:
-
       labels:
-        app: ai-devops-frontend
-
+        app: ai-devops-public-demo
     spec:
-
       containers:
-
         - name: frontend
-
-          image: 122610523913.dkr.ecr.ap-south-1.amazonaws.com/ai-devops-frontend:demo-20261007-authfix
-
+          image: 122610523913.dkr.ecr.ap-south-1.amazonaws.com/ai-devops-frontend:demo-20261008-public-demo-v6
           imagePullPolicy: IfNotPresent
-
           ports:
-
             - containerPort: 3000
-
           env:
-
             - name: BACKEND_INTERNAL_URL
               value: http://ai-devops-api.ai-devops.svc.cluster.local:8000
+            - name: PUBLIC_DEMO_MODE
+              value: "true"
+            - name: PUBLIC_DEMO_URL
+              value: http://aff79ec20ff6d48b88edc9b9831378e1-eb5b31eae7e85162.elb.ap-south-1.amazonaws.com
             - name: AUTH_SECRET
               valueFrom:
                 secretKeyRef:
@@ -47,39 +35,33 @@ spec:
             - name: AUTH_TRUST_HOST
               value: "true"
             - name: AUTH_COOKIE_PREFIX
-              value: ai-devops-eks
+              value: ai-devops-public-demo
             - name: AUTH_URL
-              value: http://localhost:3001
+              value: http://aff79ec20ff6d48b88edc9b9831378e1-eb5b31eae7e85162.elb.ap-south-1.amazonaws.com
             - name: COGNITO_ISSUER
               value: https://cognito-idp.ap-south-1.amazonaws.com/ap-south-1_A6sKQ52Wj
             - name: COGNITO_CLIENT_ID
               value: 7j18lkj091ptj4ivke9t7d8c3a
-
           resources:
-
             requests:
               cpu: "100m"
               memory: "256Mi"
-
             limits:
               cpu: "500m"
               memory: "512Mi"
-
           startupProbe:
             httpGet:
-              path: /api/auth/providers
+              path: /demo
               port: 3000
             periodSeconds: 5
             failureThreshold: 24
-
           readinessProbe:
             httpGet:
-              path: /api/auth/providers
+              path: /demo
               port: 3000
             periodSeconds: 10
-
           livenessProbe:
             httpGet:
-              path: /api/auth/providers
+              path: /demo
               port: 3000
             periodSeconds: 20

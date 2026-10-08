@@ -64,7 +64,11 @@ def _get_session_factory():
                     database_url,
                     pool_pre_ping=True,
                     pool_recycle=300,
-                    connect_args={"ssl": ssl.create_default_context()},
+                    connect_args={
+                        "ssl": ssl.create_default_context(
+                            cafile=os.getenv("MYSQL_SSL_CA")
+                        )
+                    },
                 )
             elif database_url.startswith("sqlite:///"):
                 engine = create_engine(

@@ -40,9 +40,11 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
   <body className="font-sans antialiased bg-background text-foreground">
-      <Providers>
-          {children}
-      </Providers>
+      {process.env.PUBLIC_DEMO_MODE === "true" ? (
+        children
+      ) : (
+        <Providers>{children}</Providers>
+      )}
 
       {process.env.NODE_ENV === "production" && <Analytics />}
   </body>
